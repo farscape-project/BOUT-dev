@@ -1,4 +1,3 @@
-
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
@@ -22,14 +21,18 @@ Field3D CallPythonPlugIn(Field3D n) {
   dims[0] = SIZE;
 
   double c_arr[SIZE];
-  double *c_out;
+  //double *c_out;
   for (int i=0; i < SIZE; i++)
     c_arr[i] = 1.0;
 
 
   // Initialize Python
   Py_Initialize();
-  _import_array();
+  if(PyArray_API == NULL)
+  {
+    _import_array(); 
+  }  
+  //_import_array();
 
   // Set path
   PySys_SetPath((wchar_t*)L"/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/");
@@ -44,41 +47,42 @@ Field3D CallPythonPlugIn(Field3D n) {
   PyObject *pFunc = PyObject_GetAttrString(pModule, "myabs");
 
   // Convert argument to Python object
-  //PyObject *args = PyTuple_Pack(1,PyFloat_FromDouble(val));
-
-  // Convert argument to Python object
-  PyObject *pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));
-  PyArrayObject *np_arg = reinterpret_cast<PyArrayObject*>(pArray);
+  PyObject *args = PyTuple_Pack(1,PyFloat_FromDouble(2.0));  // (ex1)
+  // PyObject *pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));  // (ex2)
+  // PyArrayObject *np_arg = reinterpret_cast<PyArrayObject*>(pArray);
 
 
   // Invoke the function
-  PyObject *pReturn = PyObject_CallFunctionObjArgs(pFunc, np_arg, NULL);
+  PyObject* pReturn = PyObject_CallObject(pFunc, args);  //(ex1)
+  // PyObject *pReturn = PyObject_CallFunctionObjArgs(pFunc, np_arg, NULL);  //(ex2)
 
-  // Convert it back to my type
-  PyArrayObject *np_ret = reinterpret_cast<PyArrayObject*>(pReturn);
 
-  // Convert back to C++ array and print.
-  int len = PyArray_SHAPE(np_ret)[0];
-  c_out = reinterpret_cast<double*>(PyArray_DATA(np_ret));
+  // Convert it back to my type (ex1)
+  double c_out = PyFloat_AsDouble(pReturn);  //(ex1)
+  // PyArrayObject *np_ret = reinterpret_cast<PyArrayObject*>(pReturn);  //(ex2)
+  // int len = PyArray_SHAPE(np_ret)[0];
+  // c_out = reinterpret_cast<double*>(PyArray_DATA(np_ret));
 
 
   // Free all temporary Python objects.
-  Py_DECREF(pModule);
-  Py_DECREF(pFunc);
-  Py_DECREF(np_arg);
-  Py_DECREF(np_ret);  
+  // Py_DECREF(pModule);
+  // Py_DECREF(pFunc);
+  // Py_DECREF(pReturn);
+  // Py_DECREF(np_arg);
+  // Py_DECREF(np_ret);  
 
   // finalize
   Py_Finalize();
 
   Field3D n2=0.0;
-  if (c_out != NULL)
+  if (c_out != 0.0) //(ex1)
+  //if (c_out != NULL) //(ex2)
   {
     n2(0,0,0)=0.0;
   }
   else
   {
-    n2(0,0,0)=1.0;
+    n2(0,0,0)=0.0;
   }
   return n2;
 }
