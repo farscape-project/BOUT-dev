@@ -1,8 +1,87 @@
 
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+
+#include "numpy/arrayobject.h"
+
 #include <bout/physicsmodel.hxx>
 #include <smoothing.hxx>
 #include <invert_laplace.hxx>
 #include <derivs.hxx>
+
+
+
+Field3D CallPythonPlugIn(Field3D n) {
+
+  // create subarray with n and phi
+  const int SIZE = 256;   // we assume square size always and take z has iit has no guard cells
+  const int ND = 1;       // number of dimensions
+  npy_intp dims[1];
+  dims[0] = SIZE;
+
+  double c_arr[SIZE];
+  double *c_out;
+  for (int i=0; i < SIZE; i++)
+    c_arr[i] = 1.0;
+
+
+  // Initialize Python
+  Py_Initialize();
+  _import_array();
+
+  // Set path
+  PySys_SetPath((wchar_t*)L"/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/");
+
+  // Import module
+  PyObject *pModule = PyImport_ImportModule("mytest");
+  if(pModule == NULL){
+    printf("The Module is not correctly imported \n");
+  }pModule;
+
+  // Retrive function
+  PyObject *pFunc = PyObject_GetAttrString(pModule, "myabs");
+
+  // Convert argument to Python object
+  //PyObject *args = PyTuple_Pack(1,PyFloat_FromDouble(val));
+
+  // Convert argument to Python object
+  PyObject *pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));
+  PyArrayObject *np_arg = reinterpret_cast<PyArrayObject*>(pArray);
+
+
+  // Invoke the function
+  PyObject *pReturn = PyObject_CallFunctionObjArgs(pFunc, np_arg, NULL);
+
+  // Convert it back to my type
+  PyArrayObject *np_ret = reinterpret_cast<PyArrayObject*>(pReturn);
+
+  // Convert back to C++ array and print.
+  int len = PyArray_SHAPE(np_ret)[0];
+  c_out = reinterpret_cast<double*>(PyArray_DATA(np_ret));
+
+
+  // Free all temporary Python objects.
+  Py_DECREF(pModule);
+  Py_DECREF(pFunc);
+  Py_DECREF(np_arg);
+  Py_DECREF(np_ret);  
+
+  // finalize
+  Py_Finalize();
+
+  Field3D n2=0.0;
+  if (c_out != NULL)
+  {
+    n2(0,0,0)=0.0;
+  }
+  else
+  {
+    n2(0,0,0)=1.0;
+  }
+  return n2;
+}
 
 class HW : public PhysicsModel {
 private:
@@ -112,8 +191,13 @@ protected:
   int diffusive(BoutReal UNUSED(time)) {
     // Diffusive terms
     mesh->communicate(n, vort);
-    ddt(n) = -Dn*Delp4(n);
-    ddt(vort) = -Dvort*Delp4(vort);
+
+    Field3D f=0.0;
+
+    Field3D nLES = CallPythonPlugIn(f);
+
+    ddt(n) = -Dn*Delp4(n) + nLES;
+    ddt(vort) = -Dvort*Delp4(vort) + nLES;
     return 0;
   }
 };
