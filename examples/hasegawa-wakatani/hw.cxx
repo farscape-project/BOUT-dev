@@ -49,7 +49,7 @@ Field3D CallPythonPlugIn(Field3D n) {
         // call function
         pValue = PyObject_CallObject(pFunc, pArgs);
         if (pValue != NULL) {
-          printf("Result of call: %f\n", PyFloat_AsDouble(pValue));
+          printf("Result of call to Python function: %f\n", PyFloat_AsDouble(pValue));
 
           // convert result back to C++
           double c_out = PyFloat_AsDouble(pValue);
@@ -65,14 +65,14 @@ Field3D CallPythonPlugIn(Field3D n) {
           Py_DECREF(pFunc);
           Py_DECREF(pModule);
           PyErr_Print();
-          fprintf(stderr, "Cannot convert to Python the arguments!\n");
+          fprintf(stderr, "Call to Python function failed!\n");
         }
 
       } else {
         Py_XDECREF(pFunc);
         Py_DECREF(pModule);
         PyErr_Print();
-        fprintf(stderr, "Call to Python function failed!\n");
+        fprintf(stderr, "Cannot convert to Python the arguments!\n");
       }
 
     } else {
