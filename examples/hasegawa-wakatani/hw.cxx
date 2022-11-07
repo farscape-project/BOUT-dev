@@ -1,10 +1,6 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
-#include "numpy/arrayobject.h"
-
 #include <bout/physicsmodel.hxx>
 #include <smoothing.hxx>
 #include <invert_laplace.hxx>
@@ -14,78 +10,102 @@
 
 Field3D CallPythonPlugIn(Field3D n) {
 
-  // create subarray with n and phi
-  const int SIZE = 256;   // we assume square size always and take z has iit has no guard cells
-  const int ND = 1;       // number of dimensions
-  npy_intp dims[1];
-  dims[0] = SIZE;
+  // define local variables
+  Field3D zerof;     // return zero field if it fails, i.e. no diffusion applied!
+  double *c_out;
 
-  double c_arr[SIZE];
-  //double *c_out;
-  for (int i=0; i < SIZE; i++)
-    c_arr[i] = 1.0;
+  PyObject *pName;
+  PyObject *pModule;
+  PyObject *pFunc;
+  PyObject *pArgs;
+  PyObject *pValue;
 
 
-  // Initialize Python
+  // Initialize local variables
+  zerof=0.0;
+
+
+  // Initialize Python interpreter
   Py_Initialize();
-  if(PyArray_API == NULL)
-  {
-    _import_array(); 
-  }  
-  //_import_array();
 
-  // Set path
+
+  // set Python system path
   PySys_SetPath((wchar_t*)L"/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/");
 
-  // Import module
-  PyObject *pModule = PyImport_ImportModule("mytest");
-  if(pModule == NULL){
-    printf("The Module is not correctly imported \n");
-  }pModule;
 
-  // Retrive function
-  PyObject *pFunc = PyObject_GetAttrString(pModule, "myabs");
+  // Import Python module
+  pModule = PyImport_ImportModule("mytest");
+  if(pModule != NULL) {
 
-  // Convert argument to Python object
-  PyObject *args = PyTuple_Pack(1,PyFloat_FromDouble(2.0));  // (ex1)
-  // PyObject *pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));  // (ex2)
-  // PyArrayObject *np_arg = reinterpret_cast<PyArrayObject*>(pArray);
+    // Load Python functions and execute it
+    pFunc = PyObject_GetAttrString(pModule, "myabs");
 
+    // pass arguments
+    if (pFunc && PyCallable_Check(pFunc)) {
+      
+      pArgs = PyTuple_Pack(1, PyFloat_FromDouble(2.0));
+      if (pArgs != NULL) {
 
-  // Invoke the function
-  PyObject* pReturn = PyObject_CallObject(pFunc, args);  //(ex1)
-  // PyObject *pReturn = PyObject_CallFunctionObjArgs(pFunc, np_arg, NULL);  //(ex2)
+        // call function
+        pValue = PyObject_CallObject(pFunc, pArgs);
+        if (pValue != NULL) {
+          printf("Result of call: %f\n", PyFloat_AsDouble(pValue));
 
+          // convert result back to C++
+          double c_out = PyFloat_AsDouble(pValue);
 
-  // Convert it back to my type (ex1)
-  double c_out = PyFloat_AsDouble(pReturn);  //(ex1)
-  // PyArrayObject *np_ret = reinterpret_cast<PyArrayObject*>(pReturn);  //(ex2)
-  // int len = PyArray_SHAPE(np_ret)[0];
-  // c_out = reinterpret_cast<double*>(PyArray_DATA(np_ret));
+          // decrement Python object counter
+          Py_DECREF(pValue);
+          Py_DECREF(pArgs);
+          Py_XDECREF(pFunc);
+          Py_DECREF(pModule);
+      
+        } else {
+          Py_DECREF(pArgs);
+          Py_DECREF(pFunc);
+          Py_DECREF(pModule);
+          PyErr_Print();
+          fprintf(stderr, "Cannot convert to Python the arguments!\n");
+        }
 
+      } else {
+        Py_XDECREF(pFunc);
+        Py_DECREF(pModule);
+        PyErr_Print();
+        fprintf(stderr, "Call to Python function failed!\n");
+      }
 
-  // Free all temporary Python objects.
-  // Py_DECREF(pModule);
-  // Py_DECREF(pFunc);
-  // Py_DECREF(pReturn);
-  // Py_DECREF(np_arg);
-  // Py_DECREF(np_ret);  
+    } else {
+      Py_DECREF(pModule);
+      PyErr_Print();
+      fprintf(stderr, "Python function not found!\n");
+    }
 
-  // finalize
-  Py_Finalize();
-
-  Field3D n2=0.0;
-  if (c_out != 0.0) //(ex1)
-  //if (c_out != NULL) //(ex2)
-  {
-    n2(0,0,0)=0.0;
+  } else {
+    PyErr_Print();
+    fprintf(stderr, "Import Python module failed!\n");
   }
-  else
-  {
-    n2(0,0,0)=0.0;
+
+
+  // shutdown Python interpreter
+  if (Py_FinalizeEx() < 0) {
+    PyErr_Print();
+    fprintf(stderr, "Failed to shutdown Python!");
   }
-  return n2;
+
+
+  // check and return value 
+  if (c_out!=NULL) {
+    return zerof;
+  } else {
+    return zerof;
+  }
+
+
 }
+
+
+
 
 class HW : public PhysicsModel {
 private:
