@@ -1,5 +1,8 @@
 #define PY_SSIZE_T_CLEAN
+#define NPY_NO_DEPRECATED_API NPY_API_VERSION
+
 #include <Python.h>
+#include <numpy/arrayobject.h>
 
 #include <bout/physicsmodel.hxx>
 #include <smoothing.hxx>
@@ -8,25 +11,12 @@
 
 
 
-Field3D CallPythonPlugIn(Field3D n) {
-
-  // define local variables
-  Field3D zerof;     // return zero field if it fails, i.e. no diffusion applied!
-  double *c_out;
-
-  PyObject *pName;
-  PyObject *pModule;
-  PyObject *pFunc;
-  PyObject *pArgs;
-  PyObject *pValue;
-
-
-  // Initialize local variables
-  zerof=0.0;
+void initPythonModule(PyObject **pModule) {
 
 
   // Initialize Python interpreter
   Py_Initialize();
+  _import_array();
 
 
   // set Python system path
@@ -34,67 +24,121 @@ Field3D CallPythonPlugIn(Field3D n) {
 
 
   // Import Python module
-  pModule = PyImport_ImportModule("mytest");
-  if(pModule != NULL) {
-
-    // Load Python functions and execute it
-    pFunc = PyObject_GetAttrString(pModule, "myabs");
-
-    // pass arguments
-    if (pFunc && PyCallable_Check(pFunc)) {
-      
-      pArgs = PyTuple_Pack(1, PyFloat_FromDouble(2.0));
-      if (pArgs != NULL) {
-
-        // call function
-        pValue = PyObject_CallObject(pFunc, pArgs);
-        if (pValue != NULL) {
-          printf("Result of call to Python function: %f\n", PyFloat_AsDouble(pValue));
-
-          // convert result back to C++
-          double c_out = PyFloat_AsDouble(pValue);
-
-          // decrement Python object counter
-          Py_DECREF(pValue);
-          Py_DECREF(pArgs);
-          Py_XDECREF(pFunc);
-          Py_DECREF(pModule);
-      
-        } else {
-          Py_DECREF(pArgs);
-          Py_DECREF(pFunc);
-          Py_DECREF(pModule);
-          PyErr_Print();
-          fprintf(stderr, "Call to Python function failed!\n");
-        }
-
-      } else {
-        Py_XDECREF(pFunc);
-        Py_DECREF(pModule);
-        PyErr_Print();
-        fprintf(stderr, "Cannot convert to Python the arguments!\n");
-      }
-
-    } else {
-      Py_DECREF(pModule);
-      PyErr_Print();
-      fprintf(stderr, "Python function not found!\n");
-    }
-
-  } else {
+  *pModule = PyImport_ImportModule("mytest");
+  if(*pModule == NULL) {
     PyErr_Print();
     fprintf(stderr, "Import Python module failed!\n");
   }
 
 
-  // shutdown Python interpreter
-  if (Py_FinalizeEx() < 0) {
+  // // shutdown Python interpreter
+  // if (Py_FinalizeEx() < 0) {
+  //   PyErr_Print();
+  //   fprintf(stderr, "Failed to shutdown Python!");
+  // }
+
+  return;
+
+}
+
+
+
+void initPythonFunction(PyObject *pModule, PyObject **pFunc) {
+
+
+  // Load Python functions and execute it
+  *pFunc = PyObject_GetAttrString(pModule, "myabs");
+
+  if (!(*pFunc) || !PyCallable_Check(*pFunc)) {
+    Py_DECREF(pModule);
     PyErr_Print();
-    fprintf(stderr, "Failed to shutdown Python!");
+    fprintf(stderr, "Python function not found!\n");
+  }
+
+  return;
+}
+
+
+
+
+Field3D findLESTerms(Field3D n, PyObject *pModule, PyObject *pFunc) {
+
+  // local variables
+  Field3D zerof=0.0;     // return zero field if it fails, i.e. no diffusion applied!
+  double *c_out;
+
+  PyObject *pValue;
+  PyObject *pArray;
+
+  PyArrayObject *pArgs;
+  PyArrayObject *pReturn;
+
+  const int SIZE = 10;
+  const int SIZE2 = SIZE*SIZE;
+  npy_intp dims[1]{SIZE2};
+  const int ND = 1;
+  double* c_arr = new double[SIZE2];
+
+  if (!c_arr) {
+      fprintf(stderr, "Out of memory!\n");
+  }
+
+  int cont=0;
+  for (int i = 0; i < SIZE; i++)
+      for (int j = 0; j < SIZE; j++)
+          c_arr[cont++] = i * SIZE + j;
+
+  // convert to numpy array   
+  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));
+  if (pArray)
+  {
+
+    // create arguments
+    pArgs = reinterpret_cast<PyArrayObject*>(pArray);
+    if (pArgs != NULL) {
+
+      // call function
+      pValue = PyObject_CallFunctionObjArgs(pFunc, pArray, NULL);
+
+      if (pValue != NULL) {
+
+        pReturn = reinterpret_cast<PyArrayObject*>(pValue);
+        printf("Dimension of returned array are: %d\n", PyArray_NDIM(pReturn));
+
+        // convert result back to C++
+        //double c_out = PyFloat_AsDouble(pValue);
+        c_out = reinterpret_cast<double*>(PyArray_DATA(pReturn));
+
+        // decrement Python object counter
+        // Py_DECREF(pReturn);
+        // Py_DECREF(pValue);
+        // Py_DECREF(pArgs);
+        // Py_DECREF(pArray);
+
+      } else {
+        Py_DECREF(pValue);
+        Py_DECREF(pArgs);
+        Py_DECREF(pFunc);
+        Py_DECREF(pModule);
+        PyErr_Print();
+        fprintf(stderr, "Call to Python function failed!\n");
+      }
+    
+    } else {
+      PyErr_Print();
+      fprintf(stderr, "Arguments not created!\n");
+    }
+
+  } else {
+    PyErr_Print();
+    fprintf(stderr, "Array not created!\n");
   }
 
 
+
   // check and return value 
+  delete [] c_arr;
+
   if (c_out!=NULL) {
     return zerof;
   } else {
@@ -102,8 +146,8 @@ Field3D CallPythonPlugIn(Field3D n) {
   }
 
 
-}
 
+}
 
 
 
@@ -111,6 +155,11 @@ class HW : public PhysicsModel {
 private:
   Field3D n, vort;  // Evolving density and vorticity
   Field3D phi;      // Electrostatic potential
+
+  // Python variables
+  PyObject *pModule;
+  PyObject *pFunc;
+  int pStep=0;
 
   // Model parameters
   BoutReal alpha;      // Adiabaticity (~conductivity)
@@ -216,9 +265,14 @@ protected:
     // Diffusive terms
     mesh->communicate(n, vort);
 
-    Field3D f=0.0;
+    if (pStep==0) {
+      initPythonModule(&pModule);
+      initPythonFunction(pModule, &pFunc);
+    }
+    pStep = pStep+1;
 
-    Field3D nLES = CallPythonPlugIn(f);
+    Field3D f=0.0;
+    Field3D nLES = findLESTerms(f, pModule, pFunc);
 
     ddt(n) = -Dn*Delp4(n) + nLES;
     ddt(vort) = -Dvort*Delp4(vort) + nLES;
