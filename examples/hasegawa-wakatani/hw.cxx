@@ -3,6 +3,7 @@
 
 #include <Python.h>
 #include <numpy/arrayobject.h>
+#include<tuple>
 
 #include <bout/physicsmodel.hxx>
 #include <smoothing.hxx>
@@ -61,53 +62,65 @@ void initPythonFunction(PyObject *pModule, PyObject **pFunc) {
 
 
 
-Field3D findLESTerms(Field3D n, PyObject *pModule, PyObject *pFunc) {
+double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc) {
 
   // local variables
-  Field3D zerof=0.0;     // return zero field if it fails, i.e. no diffusion applied!
-  double *c_out;
+  PyObject *pValue = NULL;
+  PyObject *pArray = NULL;  
+  PyArrayObject *pArgs = NULL;
+  PyArrayObject *pReturn = NULL;  
 
-  PyObject *pValue;
-  PyObject *pArray;
+  const int SIZE  = n.getNz();
+  const int SIZE2 = 2*SIZE*SIZE;
+  const int ND    = 1;
 
-  PyArrayObject *pArgs;
-  PyArrayObject *pReturn;
+  int i;
+  int j;
+  int k;
+  int cont;
 
-  const int SIZE = 10;
-  const int SIZE2 = SIZE*SIZE;
-  npy_intp dims[1]{SIZE2};
-  const int ND = 1;
-  double* c_arr = new double[SIZE2];
+  double* fLES;
+  double* pLES = new double[SIZE2];
 
-  if (!c_arr) {
-      fprintf(stderr, "Out of memory!\n");
+  if (!pLES) {
+      fprintf(stderr, "Out of memory when allocating array pLES!\n");
   }
 
-  int cont=0;
-  for (int i = 0; i < SIZE; i++)
-      for (int j = 0; j < SIZE; j++)
-          c_arr[cont++] = i * SIZE + j;
+  npy_intp dims[1]{SIZE2};
+
+
+
+
+  // pass n and vort arrays to pLES
+  cont=0;
+  for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
+    for(j=0; j<1; j++)
+      for(k=0; k<SIZE; k++){
+        pLES[cont++] = n(i,j,k);
+        pLES[cont++] = vort(i,j,k);
+      }
+
+
 
   // convert to numpy array   
-  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(c_arr));
+  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
   if (pArray)
   {
 
     // create arguments
     pArgs = reinterpret_cast<PyArrayObject*>(pArray);
-    if (pArgs != NULL) {
+    if (pArgs!=NULL) {
 
       // call function
       pValue = PyObject_CallFunctionObjArgs(pFunc, pArray, NULL);
 
-      if (pValue != NULL) {
+      if (pValue!=NULL) {
 
         pReturn = reinterpret_cast<PyArrayObject*>(pValue);
-        printf("Dimension of returned array are: %d\n", PyArray_NDIM(pReturn));
+        printf("Dimensions of returned n array are: %d\n", PyArray_NDIM(pReturn));
 
         // convert result back to C++
-        //double c_out = PyFloat_AsDouble(pValue);
-        c_out = reinterpret_cast<double*>(PyArray_DATA(pReturn));
+        fLES = reinterpret_cast<double*>(PyArray_DATA(pReturn));
 
         // decrement Python object counter
         // Py_DECREF(pReturn);
@@ -135,17 +148,9 @@ Field3D findLESTerms(Field3D n, PyObject *pModule, PyObject *pFunc) {
   }
 
 
+  delete [] pLES;
 
-  // check and return value 
-  delete [] c_arr;
-
-  if (c_out!=NULL) {
-    return zerof;
-  } else {
-    return zerof;
-  }
-
-
+  return fLES;
 
 }
 
@@ -271,11 +276,26 @@ protected:
     }
     pStep = pStep+1;
 
-    Field3D f=0.0;
-    Field3D nLES = findLESTerms(f, pModule, pFunc);
+    double *rLES;
+
+    Field3D nLES=0.0;
+    Field3D vLES=0.0;
+
+    rLES = findLESTerms(n, vort, pModule, pFunc);
+
+    // return nLES and vLES arrays from rLES
+    int cont=0;
+    for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+      for(int j=0; j<1; j++)
+        for(int k=0; k<n.getNz(); k++){
+          nLES(i,j,k) = 0.00001*rLES[cont++];
+          vLES(i,j,k) = 0.00001*rLES[cont++];
+        }
+
 
     ddt(n) = -Dn*Delp4(n) + nLES;
-    ddt(vort) = -Dvort*Delp4(vort) + nLES;
+    ddt(vort) = -Dvort*Delp4(vort) + vLES;
+
     return 0;
   }
 };

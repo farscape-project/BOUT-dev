@@ -1,6 +1,6 @@
-def myabs(x):
-  print("aa")
-  print(x)
-  #print(x.shape)
-  return x
+import sys
+
+def myabs(arr):
+  print(arr)
+  return arr
 
