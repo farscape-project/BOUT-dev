@@ -12,7 +12,7 @@
 
 
 
-void initPythonModule(PyObject **pModule) {
+void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFindLESTerms) {
 
 
   // Initialize Python interpreter
@@ -32,6 +32,26 @@ void initPythonModule(PyObject **pModule) {
   }
 
 
+  // Load Python functions and execute it
+  *pInitFlow = PyObject_GetAttrString(*pModule, "initFlow");
+
+  if (!(*pInitFlow) || !PyCallable_Check(*pInitFlow)) {
+    Py_DECREF(pModule);
+    PyErr_Print();
+    fprintf(stderr, "Python init function not found!\n");
+  }
+
+
+  // Load Python functions and execute it
+  *pFindLESTerms = PyObject_GetAttrString(*pModule, "findLESTerms");
+
+  if (!(*pFindLESTerms) || !PyCallable_Check(*pFindLESTerms)) {
+    Py_DECREF(pModule);
+    PyErr_Print();
+    fprintf(stderr, "Python function not found!\n");
+  }
+
+
   // // shutdown Python interpreter
   // if (Py_FinalizeEx() < 0) {
   //   PyErr_Print();
@@ -44,25 +64,8 @@ void initPythonModule(PyObject **pModule) {
 
 
 
-void initPythonFunction(PyObject *pModule, PyObject **pFunc) {
 
-
-  // Load Python functions and execute it
-  *pFunc = PyObject_GetAttrString(pModule, "myabs");
-
-  if (!(*pFunc) || !PyCallable_Check(*pFunc)) {
-    Py_DECREF(pModule);
-    PyErr_Print();
-    fprintf(stderr, "Python function not found!\n");
-  }
-
-  return;
-}
-
-
-
-
-double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc) {
+double* initFlow(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pInitFlow) {
 
   // local variables
   PyObject *pValue = NULL;
@@ -71,7 +74,7 @@ double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc
   PyArrayObject *pReturn = NULL;  
 
   const int SIZE  = n.getNz();
-  const int SIZE2 = 2*SIZE*SIZE;
+  const int SIZE2 = 3*SIZE*SIZE;
   const int ND    = 1;
 
   int i;
@@ -97,6 +100,7 @@ double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc
     for(j=0; j<1; j++)
       for(k=0; k<SIZE; k++){
         pLES[cont++] = n(i,j,k);
+        pLES[cont++] = phi(i,j,k);
         pLES[cont++] = vort(i,j,k);
       }
 
@@ -112,7 +116,7 @@ double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc
     if (pArgs!=NULL) {
 
       // call function
-      pValue = PyObject_CallFunctionObjArgs(pFunc, pArray, NULL);
+      pValue = PyObject_CallFunctionObjArgs(pInitFlow, pArray, NULL);
 
       if (pValue!=NULL) {
 
@@ -131,7 +135,102 @@ double* findLESTerms(Field3D n, Field3D vort, PyObject *pModule, PyObject *pFunc
       } else {
         Py_DECREF(pValue);
         Py_DECREF(pArgs);
-        Py_DECREF(pFunc);
+        Py_DECREF(pInitFlow);
+        Py_DECREF(pModule);
+        PyErr_Print();
+        fprintf(stderr, "Call to Python function failed!\n");
+      }
+    
+    } else {
+      PyErr_Print();
+      fprintf(stderr, "Arguments not created!\n");
+    }
+
+  } else {
+    PyErr_Print();
+    fprintf(stderr, "Array not created!\n");
+  }
+
+
+  delete [] pLES;
+
+  return fLES;
+
+}
+
+
+
+double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pFindLESTerms) {
+
+  // local variables
+  PyObject *pValue = NULL;
+  PyObject *pArray = NULL;  
+  PyArrayObject *pArgs = NULL;
+  PyArrayObject *pReturn = NULL;  
+
+  const int SIZE  = n.getNz();
+  const int SIZE2 = 3*SIZE*SIZE;
+  const int ND    = 1;
+
+  int i;
+  int j;
+  int k;
+  int cont;
+
+  double* fLES;
+  double* pLES = new double[SIZE2];
+
+  if (!pLES) {
+      fprintf(stderr, "Out of memory when allocating array pLES!\n");
+  }
+
+  npy_intp dims[1]{SIZE2};
+
+
+
+
+  // pass n and vort arrays to pLES
+  cont=0;
+  for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
+    for(j=0; j<1; j++)
+      for(k=0; k<SIZE; k++){
+        pLES[cont++] = n(i,j,k);
+        pLES[cont++] = phi(i,j,k);
+        pLES[cont++] = vort(i,j,k);
+      }
+
+
+
+  // convert to numpy array   
+  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
+  if (pArray)
+  {
+
+    // create arguments
+    pArgs = reinterpret_cast<PyArrayObject*>(pArray);
+    if (pArgs!=NULL) {
+
+      // call function
+      pValue = PyObject_CallFunctionObjArgs(pFindLESTerms, pArray, NULL);
+
+      if (pValue!=NULL) {
+
+        pReturn = reinterpret_cast<PyArrayObject*>(pValue);
+        //printf("Dimensions of returned n array are: %d\n", PyArray_NDIM(pReturn));
+
+        // convert result back to C++
+        fLES = reinterpret_cast<double*>(PyArray_DATA(pReturn));
+
+        // decrement Python object counter
+        // Py_DECREF(pReturn);
+        // Py_DECREF(pValue);
+        // Py_DECREF(pArgs);
+        // Py_DECREF(pArray);
+
+      } else {
+        Py_DECREF(pValue);
+        Py_DECREF(pArgs);
+        Py_DECREF(pFindLESTerms);
         Py_DECREF(pModule);
         PyErr_Print();
         fprintf(stderr, "Call to Python function failed!\n");
@@ -163,7 +262,8 @@ private:
 
   // Python variables
   PyObject *pModule;
-  PyObject *pFunc;
+  PyObject *pInitFlow;
+  PyObject *pFindLESTerms;
   int pStep=0;
 
   // Model parameters
@@ -209,6 +309,34 @@ protected:
     phiSolver = Laplacian::create();
     phi = 0.; // Starting phi
     
+
+
+
+
+    if (pStep==0) {
+      initPythonModule(&pModule, &pInitFlow, &pFindLESTerms);
+    }
+    pStep = pStep+1;
+
+    double *npv;
+
+    npv = initFlow(n, phi, vort, pModule, pInitFlow);
+
+    // return npv
+    int cont=0;
+    for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+      for(int j=0; j<1; j++)
+        for(int k=0; k<n.getNz(); k++){
+          n(i,j,k)    = npv[cont++];
+          phi(i,j,k)  = npv[cont++];
+          vort(i,j,k) = npv[cont++];          
+        }
+
+
+
+
+
+
     // Use default flags 
     
     // Choose method to use for Poisson bracket advection terms
@@ -270,28 +398,24 @@ protected:
     // Diffusive terms
     mesh->communicate(n, vort);
 
-    if (pStep==0) {
-      initPythonModule(&pModule);
-      initPythonFunction(pModule, &pFunc);
-    }
-    pStep = pStep+1;
 
     double *rLES;
 
     Field3D nLES=0.0;
     Field3D vLES=0.0;
 
-    rLES = findLESTerms(n, vort, pModule, pFunc);
+    rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
 
     // return nLES and vLES arrays from rLES
     int cont=0;
     for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
       for(int j=0; j<1; j++)
         for(int k=0; k<n.getNz(); k++){
-          nLES(i,j,k) = 0.00001*rLES[cont++];
-          vLES(i,j,k) = 0.00001*rLES[cont++];
+          nLES(i,j,k) = 0.0*rLES[cont++];
+          vLES(i,j,k) = 0.0*rLES[cont++];
         }
 
+    pStep = pStep+1;
 
     ddt(n) = -Dn*Delp4(n) + nLES;
     ddt(vort) = -Dvort*Delp4(vort) + vLES;
