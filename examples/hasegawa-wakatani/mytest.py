@@ -1,6 +1,13 @@
+import sys
+import os
+
 import numpy as np
 
 def initFlow(npv):
+
+  print(sys.version)
+  print(sys.path)
+  print("PYTHONPATH:", os.environ.get('PYTHONPATH'))
 
   SIZE = 256
 
@@ -24,5 +31,5 @@ def initFlow(npv):
 
 
 def findLESTerms(n):
-  #print(n)
+  print(n)
   return n

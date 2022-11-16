@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.13)
 
 project(hasegawa-wakatani LANGUAGES CXX)
 
-find_package(PythonLibs REQUIRED)
+find_package(Python 3.8 REQUIRED COMPONENTS NumPy)
+find_package(PythonLibs 3.8 REQUIRED)
 include_directories(${PYTHON_INCLUDE_DIRS})
 
 if (NOT TARGET bout++::bout++)
@@ -11,5 +12,5 @@ endif()
 
 bout_add_example(hasegawa-wakatani SOURCES hw.cxx)
 
-target_link_libraries(hasegawa-wakatani ${PYTHON_LIBRARIES})
+target_link_libraries(hasegawa-wakatani ${PYTHON_LIBRARIES} Python::NumPy util)
 

@@ -21,8 +21,8 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
 
   // set Python system path
-  PySys_SetPath((wchar_t*)L"/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/");
-
+  PyObject *sys_path = PySys_GetObject("path");
+  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("mytest");
