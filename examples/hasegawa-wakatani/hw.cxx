@@ -22,10 +22,10 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/BOUT-dev/examples/hasegawa-wakatani/"));
+  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES_HW/utilities/"));
 
   // Import Python module
-  *pModule = PyImport_ImportModule("mytest");
+  *pModule = PyImport_ImportModule("pBOUT");
   if(*pModule == NULL) {
     PyErr_Print();
     fprintf(stderr, "Import Python module failed!\n");
@@ -316,7 +316,6 @@ protected:
     if (pStep==0) {
       initPythonModule(&pModule, &pInitFlow, &pFindLESTerms);
     }
-    pStep = pStep+1;
 
     double *npv;
 
@@ -324,17 +323,33 @@ protected:
 
     // return npv
     int cont=0;
+    double minN= 10000.0;
+    double maxN=-10000.0;
+    double minP= 10000.0;
+    double maxP=-10000.0;
+    double minV= 10000.0;
+    double maxV=-10000.0;
+
     for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
       for(int j=0; j<1; j++)
         for(int k=0; k<n.getNz(); k++){
           n(i,j,k)    = npv[cont++];
           phi(i,j,k)  = npv[cont++];
-          vort(i,j,k) = npv[cont++];          
+          vort(i,j,k) = npv[cont++];
+          minN = std::min(minN,n(i,j,k));
+          maxN = std::max(maxN,n(i,j,k));
+          minP = std::min(minP,phi(i,j,k));
+          maxP = std::max(maxP,phi(i,j,k));
+          minV = std::min(minV,vort(i,j,k));
+          maxV = std::max(maxV,vort(i,j,k));
         }
 
+    printf("%f %f \n", minN, maxN);
+    printf("%f %f \n", minP, maxP);
+    printf("%f %f \n", minV, maxV);
 
-
-
+    // Communicate variables
+    mesh->communicate(n, phi, vort);
 
 
     // Use default flags 
@@ -374,6 +389,8 @@ protected:
     
     // Solve for potential
     phi = phiSolver->solve(vort, phi);
+    // output << pStep << "\n";
+    pStep++;
     
     // Communicate variables
     mesh->communicate(n, vort, phi);
@@ -404,18 +421,18 @@ protected:
     Field3D nLES=0.0;
     Field3D vLES=0.0;
 
-    rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
+    // rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
 
-    // return nLES and vLES arrays from rLES
-    int cont=0;
-    for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
-      for(int j=0; j<1; j++)
-        for(int k=0; k<n.getNz(); k++){
-          nLES(i,j,k) = 0.0*rLES[cont++];
-          vLES(i,j,k) = 0.0*rLES[cont++];
-        }
+    // // return nLES and vLES arrays from rLES
+    // int cont=0;
+    // for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+    //   for(int j=0; j<1; j++)
+    //     for(int k=0; k<n.getNz(); k++){
+    //       nLES(i,j,k) = 0.0*rLES[cont++];
+    //       vLES(i,j,k) = 0.0*rLES[cont++];
+    //     }
 
-    pStep = pStep+1;
+    // pStep = pStep+1;
 
     ddt(n) = -Dn*Delp4(n) + nLES;
     ddt(vort) = -Dvort*Delp4(vort) + vLES;
