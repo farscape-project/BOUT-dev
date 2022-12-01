@@ -22,7 +22,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES_HW/utilities/"));
+  PyList_Append(sys_path, PyUnicode_FromString("/lustre/scafellpike/local/HT04543/jxc06/jxc74-jxc06/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
@@ -51,17 +51,29 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
     fprintf(stderr, "Python function not found!\n");
   }
 
-
-  // // shutdown Python interpreter
-  // if (Py_FinalizeEx() < 0) {
-  //   PyErr_Print();
-  //   fprintf(stderr, "Failed to shutdown Python!");
-  // }
-
   return;
 
 }
 
+
+
+
+
+void closePythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFindLESTerms) {
+
+  // shutdown Python interpreter
+  Py_DECREF(pInitFlow);
+  Py_DECREF(pFindLESTerms);
+  Py_DECREF(pModule);
+
+  if (Py_FinalizeEx() < 0) {
+    PyErr_Print();
+    fprintf(stderr, "Failed to shutdown Python!");
+  }
+
+  return;
+
+}
 
 
 
@@ -157,7 +169,6 @@ double* initFlow(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObje
   return fLES;
 
 }
-
 
 
 double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pFindLESTerms) {
@@ -317,36 +328,42 @@ protected:
       initPythonModule(&pModule, &pInitFlow, &pFindLESTerms);
     }
 
-    double *npv;
 
-    npv = initFlow(n, phi, vort, pModule, pInitFlow);
+    // double *npv;
 
-    // return npv
-    int cont=0;
-    double minN= 10000.0;
-    double maxN=-10000.0;
-    double minP= 10000.0;
-    double maxP=-10000.0;
-    double minV= 10000.0;
-    double maxV=-10000.0;
+    // npv = initFlow(n, phi, vort, pModule, pInitFlow);
 
-    for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
-      for(int j=0; j<1; j++)
-        for(int k=0; k<n.getNz(); k++){
-          n(i,j,k)    = npv[cont++];
-          phi(i,j,k)  = npv[cont++];
-          vort(i,j,k) = npv[cont++];
-          minN = std::min(minN,n(i,j,k));
-          maxN = std::max(maxN,n(i,j,k));
-          minP = std::min(minP,phi(i,j,k));
-          maxP = std::max(maxP,phi(i,j,k));
-          minV = std::min(minV,vort(i,j,k));
-          maxV = std::max(maxV,vort(i,j,k));
-        }
+    // // return npv
+    // int cont=0;
+    // double minN= 10000.0;
+    // double maxN=-10000.0;
+    // double minP= 10000.0;
+    // double maxP=-10000.0;
+    // double minV= 10000.0;
+    // double maxV=-10000.0;
 
-    printf("%f %f \n", minN, maxN);
-    printf("%f %f \n", minP, maxP);
-    printf("%f %f \n", minV, maxV);
+    // for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+    //   for(int j=0; j<1; j++)
+    //     for(int k=0; k<n.getNz(); k++){
+    //       n(i,j,k)    = npv[cont++];
+    //       phi(i,j,k)  = npv[cont++];
+    //       vort(i,j,k) = npv[cont++];
+    //       minN = std::min(minN,n(i,j,k));
+    //       maxN = std::max(maxN,n(i,j,k));
+    //       minP = std::min(minP,phi(i,j,k));
+    //       maxP = std::max(maxP,phi(i,j,k));
+    //       minV = std::min(minV,vort(i,j,k));
+    //       maxV = std::max(maxV,vort(i,j,k));
+    //     }
+
+    // printf("%f %f \n", minN, maxN);
+    // printf("%f %f \n", minP, maxP);
+    // printf("%f %f \n", minV, maxV);
+
+
+    // // close Python console
+    // closePythonModule(&pModule, &pInitFlow, &pFindLESTerms);
+
 
     // Communicate variables
     mesh->communicate(n, phi, vort);
@@ -384,12 +401,13 @@ protected:
     return 0;
   }
 
+
+
   int convective(BoutReal UNUSED(time)) {
     // Non-stiff, convective part of the problem
     
     // Solve for potential
     phi = phiSolver->solve(vort, phi);
-    // output << pStep << "\n";
     pStep++;
     
     // Communicate variables
@@ -411,35 +429,64 @@ protected:
     return 0;
   }
   
+
+
+
   int diffusive(BoutReal UNUSED(time)) {
     // Diffusive terms
     mesh->communicate(n, vort);
 
-
     double *rLES;
+    Field3D Dpyvx=0.0;
+    Field3D Dpxvy=0.0;
+    Field3D Dpynx=0.0;
+    Field3D Dpxny=0.0;
 
-    Field3D nLES=0.0;
-    Field3D vLES=0.0;
+    double minN= 10000.0;
+    double maxN=-10000.0;
+    double minP= 10000.0;
+    double maxP=-10000.0;
+    double minV= 10000.0;
+    double maxV=-10000.0;
+    double minX= 10000.0;
+    double maxX=-10000.0;
 
-    // rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
+    if (pStep>=0){
+      rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
+      int N_LES = n.getNz();
+      int cont=0;
+      for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+        for(int j=0; j<1; j++)
+          for(int k=0; k<n.getNz(); k++){
+            Dpyvx(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+            Dpxvy(i,j,k) = rLES[cont + 1*N_LES*N_LES];
+            Dpynx(i,j,k) = rLES[cont + 2*N_LES*N_LES];
+            Dpxny(i,j,k) = rLES[cont + 3*N_LES*N_LES];
+            cont = cont+1;
+            minN = std::min(minN,Dpyvx(i,j,k));
+            maxN = std::max(maxN,Dpyvx(i,j,k));
+            minP = std::min(minP,Dpxvy(i,j,k));
+            maxP = std::max(maxP,Dpxvy(i,j,k));
+            minV = std::min(minV,Dpynx(i,j,k));
+            maxV = std::max(maxV,Dpynx(i,j,k));
+            minX = std::min(minX,Dpxny(i,j,k));
+            maxX = std::max(maxX,Dpxny(i,j,k));
+          }
+    }
 
-    // // return nLES and vLES arrays from rLES
-    // int cont=0;
-    // for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
-    //   for(int j=0; j<1; j++)
-    //     for(int k=0; k<n.getNz(); k++){
-    //       nLES(i,j,k) = 0.0*rLES[cont++];
-    //       vLES(i,j,k) = 0.0*rLES[cont++];
-    //     }
+    // printf("%f %f \n", minN, maxN);
+    // printf("%f %f \n", minP, maxP);
+    // printf("%f %f \n", minV, maxV);
+    // printf("%f %f \n", minX, maxX);    
 
-    // pStep = pStep+1;
-
-    ddt(n) = -Dn*Delp4(n) + nLES;
-    ddt(vort) = -Dvort*Delp4(vort) + vLES;
+    ddt(n) = -Dn*Delp4(n) + Dpyvx + Dpxvy;
+    ddt(vort) = -Dvort*Delp4(vort) + Dpynx + Dpxny;
 
     return 0;
   }
 };
+
+
 
 // Define a main() function
 BOUTMAIN(HW);
