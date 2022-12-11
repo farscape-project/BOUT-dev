@@ -77,7 +77,7 @@ void closePythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFin
 
 
 
-double* initFlow(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pInitFlow) {
+double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pInitFlow) {
 
   // local variables
   PyObject *pValue = NULL;
@@ -95,7 +95,7 @@ double* initFlow(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObje
   int cont;
 
   double* fLES;
-  double* pLES = new double[SIZE2];
+  double* pLES = new double[2+SIZE2];
 
   if (!pLES) {
       fprintf(stderr, "Out of memory when allocating array pLES!\n");
@@ -107,7 +107,10 @@ double* initFlow(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObje
 
 
   // pass n and vort arrays to pLES
-  cont=0;
+  pLES[0] = dx;
+  pLES[1] = dy;
+
+  cont=2;
   for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
     for(j=0; j<1; j++)
       for(k=0; k<SIZE; k++){
@@ -327,38 +330,42 @@ protected:
     if (pStep==0) {
       initPythonModule(&pModule, &pInitFlow, &pFindLESTerms);
     }
+    double dx = 0.4;   // to do: Make it general!
+    double dz = 0.4; 
 
+    double *npv;
 
-    // double *npv;
+    npv = initFlow(dx, dz, n, phi, vort, pModule, pInitFlow);
 
-    // npv = initFlow(n, phi, vort, pModule, pInitFlow);
+    // return npv
+    int N_LES = n.getNz();
 
-    // // return npv
-    // int cont=0;
-    // double minN= 10000.0;
-    // double maxN=-10000.0;
-    // double minP= 10000.0;
-    // double maxP=-10000.0;
-    // double minV= 10000.0;
-    // double maxV=-10000.0;
+    int cont=0;
+    double minN= 10000.0;
+    double maxN=-10000.0;
+    double minP= 10000.0;
+    double maxP=-10000.0;
+    double minV= 10000.0;
+    double maxV=-10000.0;
 
-    // for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
-    //   for(int j=0; j<1; j++)
-    //     for(int k=0; k<n.getNz(); k++){
-    //       n(i,j,k)    = npv[cont++];
-    //       phi(i,j,k)  = npv[cont++];
-    //       vort(i,j,k) = npv[cont++];
-    //       minN = std::min(minN,n(i,j,k));
-    //       maxN = std::max(maxN,n(i,j,k));
-    //       minP = std::min(minP,phi(i,j,k));
-    //       maxP = std::max(maxP,phi(i,j,k));
-    //       minV = std::min(minV,vort(i,j,k));
-    //       maxV = std::max(maxV,vort(i,j,k));
-    //     }
+    for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+      for(int j=0; j<1; j++)
+        for(int k=0; k<n.getNz(); k++){
+          n(i,j,k)    = npv[cont + 0*N_LES*N_LES];
+          phi(i,j,k)  = npv[cont + 1*N_LES*N_LES];
+          vort(i,j,k) = npv[cont + 2*N_LES*N_LES];
+          cont = cont+1;
+          minN = std::min(minN,n(i,j,k));
+          maxN = std::max(maxN,n(i,j,k));
+          minP = std::min(minP,phi(i,j,k));
+          maxP = std::max(maxP,phi(i,j,k));
+          minV = std::min(minV,vort(i,j,k));
+          maxV = std::max(maxV,vort(i,j,k));
+        }
 
-    // printf("%f %f \n", minN, maxN);
-    // printf("%f %f \n", minP, maxP);
-    // printf("%f %f \n", minV, maxV);
+    printf("%f %f \n", minN, maxN);
+    printf("%f %f \n", minP, maxP);
+    printf("%f %f \n", minV, maxV);
 
 
     // // close Python console
@@ -407,7 +414,9 @@ protected:
     // Non-stiff, convective part of the problem
     
     // Solve for potential
-    phi = phiSolver->solve(vort, phi);
+    if (pStep>1){
+      phi = phiSolver->solve(vort, phi);
+    }
     pStep++;
     
     // Communicate variables
@@ -455,7 +464,7 @@ protected:
       rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
       int N_LES = n.getNz();
       int cont=0;
-      for(int i=2; i<n.getNz()+2; i++)   // we assume 2 guards cells in x-direction
+      for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
         for(int j=0; j<1; j++)
           for(int k=0; k<n.getNz(); k++){
             Dpyvx(i,j,k) = rLES[cont + 0*N_LES*N_LES];
