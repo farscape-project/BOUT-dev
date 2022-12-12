@@ -204,15 +204,24 @@ double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, Py
 
 
   // pass n and vort arrays to pLES
-  cont=0;
-  for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
-    for(j=0; j<1; j++)
-      for(k=0; k<SIZE; k++){
-        pLES[cont++] = n(i,j,k);
-        pLES[cont++] = phi(i,j,k);
-        pLES[cont++] = vort(i,j,k);
-      }
+  // for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
+  //   for(j=0; j<1; j++)
+  //     for(k=0; k<SIZE; k++){
+  //       pLES[cont++] = n(i,j,k);
+  //       pLES[cont++] = phi(i,j,k);
+  //       pLES[cont++] = vort(i,j,k);
+  //     }
 
+  cont=0;
+  int N_LES = n.getNz();
+  for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+    for(int j=0; j<1; j++)
+      for(int k=0; k<n.getNz(); k++){
+        pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
+        pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
+        pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
+        cont = cont+1;
+      }
 
 
   // convert to numpy array   
@@ -451,14 +460,14 @@ protected:
     Field3D Dpynx=0.0;
     Field3D Dpxny=0.0;
 
-    double minN= 10000.0;
-    double maxN=-10000.0;
-    double minP= 10000.0;
-    double maxP=-10000.0;
-    double minV= 10000.0;
-    double maxV=-10000.0;
-    double minX= 10000.0;
-    double maxX=-10000.0;
+    // double minN= 10000.0;
+    // double maxN=-10000.0;
+    // double minP= 10000.0;
+    // double maxP=-10000.0;
+    // double minV= 10000.0;
+    // double maxV=-10000.0;
+    // double minX= 10000.0;
+    // double maxX=-10000.0;
 
     if (pStep>=0){
       rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
@@ -472,14 +481,14 @@ protected:
             Dpynx(i,j,k) = rLES[cont + 2*N_LES*N_LES];
             Dpxny(i,j,k) = rLES[cont + 3*N_LES*N_LES];
             cont = cont+1;
-            minN = std::min(minN,Dpyvx(i,j,k));
-            maxN = std::max(maxN,Dpyvx(i,j,k));
-            minP = std::min(minP,Dpxvy(i,j,k));
-            maxP = std::max(maxP,Dpxvy(i,j,k));
-            minV = std::min(minV,Dpynx(i,j,k));
-            maxV = std::max(maxV,Dpynx(i,j,k));
-            minX = std::min(minX,Dpxny(i,j,k));
-            maxX = std::max(maxX,Dpxny(i,j,k));
+            // minN = std::min(minN,Dpyvx(i,j,k));
+            // maxN = std::max(maxN,Dpyvx(i,j,k));
+            // minP = std::min(minP,Dpxvy(i,j,k));
+            // maxP = std::max(maxP,Dpxvy(i,j,k));
+            // minV = std::min(minV,Dpynx(i,j,k));
+            // maxV = std::max(maxV,Dpynx(i,j,k));
+            // minX = std::min(minX,Dpxny(i,j,k));
+            // maxX = std::max(maxX,Dpxny(i,j,k));
           }
     }
 
@@ -488,8 +497,8 @@ protected:
     // printf("%f %f \n", minV, maxV);
     // printf("%f %f \n", minX, maxX);    
 
-    ddt(n) = -Dn*Delp4(n) + Dpyvx + Dpxvy;
-    ddt(vort) = -Dvort*Delp4(vort) + Dpynx + Dpxny;
+    ddt(n) = -Dn*Delp4(n); // + Dpyvx + Dpxvy;
+    ddt(vort) = -Dvort*Delp4(vort); // + Dpynx + Dpxny;
 
     return 0;
   }
