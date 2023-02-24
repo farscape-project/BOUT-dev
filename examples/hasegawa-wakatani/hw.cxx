@@ -174,7 +174,8 @@ double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyO
 }
 
 
-double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pFindLESTerms) {
+double* findLESTerms(int pStep, int pStepStart, double dx, double dy, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
+  PyObject *pModule, PyObject *pFindLESTerms) {
 
   // local variables
   PyObject *pValue = NULL;
@@ -183,7 +184,7 @@ double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, Py
   PyArrayObject *pReturn = NULL;  
 
   const int SIZE  = n.getNz();
-  const int SIZE2 = 3*SIZE*SIZE;
+  const int SIZE2 = 4+5*SIZE*SIZE;
   const int ND    = 1;
 
   int i;
@@ -202,17 +203,13 @@ double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, Py
 
 
 
-
   // pass n and vort arrays to pLES
-  // for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
-  //   for(j=0; j<1; j++)
-  //     for(k=0; k<SIZE; k++){
-  //       pLES[cont++] = n(i,j,k);
-  //       pLES[cont++] = phi(i,j,k);
-  //       pLES[cont++] = vort(i,j,k);
-  //     }
+  pLES[0] = double(pStep);
+  pLES[1] = double(pStepStart);
+  pLES[2] = dx;
+  pLES[3] = dy;
 
-  cont=0;
+  cont=4;
   int N_LES = n.getNz();
   for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
     for(int j=0; j<1; j++)
@@ -220,6 +217,8 @@ double* findLESTerms(Field3D n, Field3D phi, Field3D vort, PyObject *pModule, Py
         pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
         pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
         pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
+        pLES[cont + 3*N_LES*N_LES] = pPhiVort(i,j,k);            
+        pLES[cont + 4*N_LES*N_LES] = pPhiN(i,j,k);
         cont = cont+1;
       }
 
@@ -287,7 +286,20 @@ private:
   PyObject *pModule;
   PyObject *pInitFlow;
   PyObject *pFindLESTerms;
-  int pStep=0;
+
+  int pStep      = 0;
+  int pStepStart = 228;
+
+  double deltax;
+  double deltaz;
+
+  Field3D pPhiVort;
+  Field3D pPhiN;
+
+  Field3D pDvort = 0.0;
+  Field3D pDn    = 0.0;
+
+
 
   // Model parameters
   BoutReal alpha;      // Adiabaticity (~conductivity)
@@ -339,12 +351,16 @@ protected:
     if (pStep==0) {
       initPythonModule(&pModule, &pInitFlow, &pFindLESTerms);
     }
-    double dx = 0.4;   // to do: Make it general!
-    double dz = 0.4; 
+
+    CELL_LOC outloc = n.getLocation();
+    Coordinates *metric = phi.getCoordinates(outloc);
+
+    deltax = metric->dx(0,0,0);
+    deltaz = metric->dz(0,0,0);
 
     double *npv;
 
-    npv = initFlow(dx, dz, n, phi, vort, pModule, pInitFlow);
+    npv = initFlow(deltax, deltaz, n, phi, vort, pModule, pInitFlow);
 
     // return npv
     int N_LES = n.getNz();
@@ -423,11 +439,11 @@ protected:
     // Non-stiff, convective part of the problem
     
     // Solve for potential
-    if (pStep>1){
+    if (pStep>-1){
       phi = phiSolver->solve(vort, phi);
     }
     pStep++;
-    
+        
     // Communicate variables
     mesh->communicate(n, vort, phi);
     
@@ -440,9 +456,11 @@ protected:
       nonzonal_phi -= averageY(DC(phi));
     }
     
-    ddt(n) = -bracket(phi, n, bm) + alpha*(nonzonal_phi - nonzonal_n) - kappa*DDZ(phi);
-    
-    ddt(vort) = -bracket(phi, vort, bm) + alpha*(nonzonal_phi - nonzonal_n);
+    pPhiVort = bracket(phi, vort, bm);
+    pPhiN    = bracket(phi, n,    bm);
+
+    ddt(vort) = -pPhiVort + alpha*(nonzonal_phi - nonzonal_n);
+    ddt(n)    = -pPhiN    + alpha*(nonzonal_phi - nonzonal_n) - kappa*DDZ(phi);
   
     return 0;
   }
@@ -455,50 +473,38 @@ protected:
     mesh->communicate(n, vort);
 
     double *rLES;
-    Field3D Dpyvx=0.0;
-    Field3D Dpxvy=0.0;
-    Field3D Dpynx=0.0;
-    Field3D Dpxny=0.0;
 
-    // double minN= 10000.0;
-    // double maxN=-10000.0;
-    // double minP= 10000.0;
-    // double maxP=-10000.0;
-    // double minV= 10000.0;
-    // double maxV=-10000.0;
-    // double minX= 10000.0;
-    // double maxX=-10000.0;
+    double minpDvort =  10000.0;
+    double maxpDvort = -10000.0;
+    double minpDn    =  10000.0;
+    double maxpDn    = -10000.0;
 
-    if (pStep>=0){
-      rLES = findLESTerms(n, phi, vort, pModule, pFindLESTerms);
+    if (pStep%1==0 && pStep>=pStepStart)
+    {
+      rLES = findLESTerms(pStep, pStepStart, deltax, deltaz, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
       int N_LES = n.getNz();
       int cont=0;
       for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
         for(int j=0; j<1; j++)
           for(int k=0; k<n.getNz(); k++){
-            Dpyvx(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-            Dpxvy(i,j,k) = rLES[cont + 1*N_LES*N_LES];
-            Dpynx(i,j,k) = rLES[cont + 2*N_LES*N_LES];
-            Dpxny(i,j,k) = rLES[cont + 3*N_LES*N_LES];
+            pDvort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+            pDn(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
             cont = cont+1;
-            // minN = std::min(minN,Dpyvx(i,j,k));
-            // maxN = std::max(maxN,Dpyvx(i,j,k));
-            // minP = std::min(minP,Dpxvy(i,j,k));
-            // maxP = std::max(maxP,Dpxvy(i,j,k));
-            // minV = std::min(minV,Dpynx(i,j,k));
-            // maxV = std::max(maxV,Dpynx(i,j,k));
-            // minX = std::min(minX,Dpxny(i,j,k));
-            // maxX = std::max(maxX,Dpxny(i,j,k));
+            // minpDvort = std::min(minpDvort,pDvort(i,j,k));
+            // maxpDvort = std::max(maxpDvort,pDvort(i,j,k));
+            // minpDn    = std::min(minpDn,pDn(i,j,k));
+            // maxpDn    = std::max(maxpDn,pDn(i,j,k));
           }
+
+      // printf("%f %f \n", minpDvort, maxpDvort);
+      // printf("%f %f \n", minpDn,    maxpDn);
+
+      mesh->communicate(pDvort, pDn);
     }
 
-    // printf("%f %f \n", minN, maxN);
-    // printf("%f %f \n", minP, maxP);
-    // printf("%f %f \n", minV, maxV);
-    // printf("%f %f \n", minX, maxX);    
 
-    ddt(n) = -Dn*Delp4(n); // + Dpyvx + Dpxvy;
-    ddt(vort) = -Dvort*Delp4(vort); // + Dpynx + Dpxny;
+    ddt(vort) = -Dvort*Delp4(vort) - pDvort;
+    ddt(n)    = -Dn*Delp4(n)       - pDn;
 
     return 0;
   }
