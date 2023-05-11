@@ -22,7 +22,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/lustre/scafellpike/local/HT04543/jxc06/jxc74-jxc06/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES/bout_interfaces/"));
+  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
@@ -174,6 +174,9 @@ double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyO
 }
 
 
+
+
+
 double* findLESTerms(int pStep, int pStepStart, double dx, double dy, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
   PyObject *pModule, PyObject *pFindLESTerms) {
 
@@ -288,10 +291,12 @@ private:
   PyObject *pFindLESTerms;
 
   int pStep      = 0;
-  int pStepStart = 228;
+  int pStepStart = 1;
 
   double deltax;
   double deltaz;
+  double tollLES = 1.0e-3;
+  double residualsLES = 1.0e10;
 
   Field3D pPhiVort;
   Field3D pPhiN;
@@ -439,7 +444,7 @@ protected:
     // Non-stiff, convective part of the problem
     
     // Solve for potential
-    if (pStep>-1){
+    if (pStep>1){
       phi = phiSolver->solve(vort, phi);
     }
     pStep++;
@@ -472,6 +477,7 @@ protected:
     // Diffusive terms
     mesh->communicate(n, vort);
 
+    double *mLES;
     double *rLES;
 
     double minpDvort =  10000.0;
@@ -496,8 +502,8 @@ protected:
             // maxpDn    = std::max(maxpDn,pDn(i,j,k));
           }
 
-      // printf("%f %f \n", minpDvort, maxpDvort);
-      // printf("%f %f \n", minpDn,    maxpDn);
+      // printf("%d %f %f \n", pStep, minpDvort, maxpDvort);
+      // printf("%d %f %f \n", pStep, minpDn,    maxpDn);
 
       mesh->communicate(pDvort, pDn);
     }
