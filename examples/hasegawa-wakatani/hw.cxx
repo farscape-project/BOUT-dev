@@ -177,7 +177,7 @@ double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyO
 
 
 
-double* findLESTerms(int pStep, int pStepStart, double dx, double dy, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
+double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
   PyObject *pModule, PyObject *pFindLESTerms) {
 
   // local variables
@@ -210,7 +210,7 @@ double* findLESTerms(int pStep, int pStepStart, double dx, double dy, Field3D n,
   pLES[0] = double(pStep);
   pLES[1] = double(pStepStart);
   pLES[2] = dx;
-  pLES[3] = dy;
+  pLES[3] = simtime;
 
   cont=4;
   int N_LES = n.getNz();
@@ -291,7 +291,7 @@ private:
   PyObject *pFindLESTerms;
 
   int pStep      = 0;
-  int pStepStart = 1;
+  int pStepStart = 300;
 
   double deltax;
   double deltaz;
@@ -473,7 +473,7 @@ protected:
 
 
 
-  int diffusive(BoutReal UNUSED(time)) {
+  int diffusive(BoutReal time) {
     // Diffusive terms
     mesh->communicate(n, vort);
 
@@ -487,7 +487,8 @@ protected:
 
     if (pStep%1==0 && pStep>=pStepStart)
     {
-      rLES = findLESTerms(pStep, pStepStart, deltax, deltaz, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
+      double simtime = time;
+      rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
       int N_LES = n.getNz();
       int cont=0;
       for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
@@ -507,7 +508,6 @@ protected:
 
       mesh->communicate(pDvort, pDn);
     }
-
 
     ddt(vort) = -Dvort*Delp4(vort) - pDvort;
     ddt(n)    = -Dn*Delp4(n)       - pDn;

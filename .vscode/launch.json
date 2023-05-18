@@ -18,7 +18,7 @@
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceRoot}/build_debug/examples/hasegawa-wakatani/hasegawa-wakatani",
-            "args": ["restart"],
+            // "args": ["restart"],
             "stopAtEntry": false,
             "cwd": "${workspaceRoot}/build_debug/examples/hasegawa-wakatani/",
             "environment": [],
