@@ -11,16 +11,20 @@ periodicX = true  # Domain is periodic in X
 
 [mesh]
 
-nx = 68 # Note 4 guard cells in X
+nx = 260 # Note 4 guard cells in X
 ny = 1
-nz = 64 # Periodic, so no guard cells in Z
+nz = 256 # Periodic, so no guard cells in Z
 
-dx = 0.784
+L  = 50.176
+dx = L/(nx-4)
 dy = 1.0
-dz = 0.784
+dz = L/nz
 
 [solver]
 mxstep = 1e5
+
+[output]
+enabled = true
 
 [hw]
 

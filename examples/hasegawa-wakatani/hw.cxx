@@ -3,7 +3,8 @@
 
 #include <Python.h>
 #include <numpy/arrayobject.h>
-#include<tuple>
+#include <tuple>
+
 
 #include <bout/physicsmodel.hxx>
 #include <smoothing.hxx>
@@ -22,7 +23,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES/bout_interfaces/"));
+  PyList_Append(sys_path, PyUnicode_FromString("/lustre/scafellpike/local/HT04543/jxc06/jxc74-jxc06/projects/Turbulence_with_Style/PhaseIII_FARSCAPE3/codes/StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
@@ -177,7 +178,7 @@ double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyO
 
 
 
-double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
+double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field3D n, Field3D phi, Field3D vort,
   PyObject *pModule, PyObject *pFindLESTerms) {
 
   // local variables
@@ -187,7 +188,7 @@ double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field
   PyArrayObject *pReturn = NULL;  
 
   const int SIZE  = n.getNz();
-  const int SIZE2 = 4+5*SIZE*SIZE;
+  const int SIZE2 = 4+3*SIZE*SIZE;
   const int ND    = 1;
 
   int i;
@@ -220,8 +221,6 @@ double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field
         pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
         pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
         pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
-        pLES[cont + 3*N_LES*N_LES] = pPhiVort(i,j,k);            
-        pLES[cont + 4*N_LES*N_LES] = pPhiN(i,j,k);
         cont = cont+1;
       }
 
@@ -282,8 +281,8 @@ double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field
 
 class HW : public PhysicsModel {
 private:
-  Field3D n, vort;  // Evolving density and vorticity
-  Field3D phi;      // Electrostatic potential
+  Field3D n, vort; // Evolving density and vorticity
+  Field3D phi;     // Electrostatic potential
 
   // Python variables
   PyObject *pModule;
@@ -291,35 +290,32 @@ private:
   PyObject *pFindLESTerms;
 
   int pStep      = 0;
-  int pStepStart = 300;
+  int pStepStart = 200;
 
   double deltax;
   double deltaz;
   double tollLES = 1.0e-3;
   double residualsLES = 1.0e10;
+  double psimtime = 0.0;
 
   Field3D pPhiVort;
   Field3D pPhiN;
 
-  Field3D pDvort = 0.0;
-  Field3D pDn    = 0.0;
-
-
 
   // Model parameters
-  BoutReal alpha;      // Adiabaticity (~conductivity)
-  BoutReal kappa;      // Density gradient drive
-  BoutReal Dvort, Dn;  // Diffusion 
-  bool modified; // Modified H-W equations?
-  
+  BoutReal alpha;     // Adiabaticity (~conductivity)
+  BoutReal kappa;     // Density gradient drive
+  BoutReal Dvort, Dn; // Diffusion
+  bool modified;      // Modified H-W equations?
+
   // Poisson brackets: b0 x Grad(f) dot Grad(g) / B = [f, g]
   // Method to use: BRACKET_ARAKAWA, BRACKET_STD or BRACKET_SIMPLE
   BRACKET_METHOD bm; // Bracket method for advection terms
-  
+
   std::unique_ptr<Laplacian> phiSolver; // Laplacian solver for vort -> phi
 
   // Simple implementation of 4th order perpendicular Laplacian
-  Field3D Delp4(const Field3D &var) {
+  Field3D Delp4(const Field3D& var) {
     Field3D tmp;
     tmp = Delp2(var);
     mesh->communicate(tmp);
@@ -328,7 +324,7 @@ private:
 
     //return Delp2(var);
   }
-  
+
 protected:
   int init(bool UNUSED(restart)) {
 
@@ -345,10 +341,12 @@ protected:
 
     // Split into convective and diffusive parts
     setSplitOperator();
-    
+
     phiSolver = Laplacian::create();
     phi = 0.; // Starting phi
     
+    pPhiVort = 0.;
+    pPhiN = 0.;
 
 
 
@@ -369,15 +367,7 @@ protected:
 
     // return npv
     int N_LES = n.getNz();
-
     int cont=0;
-    double minN= 10000.0;
-    double maxN=-10000.0;
-    double minP= 10000.0;
-    double maxP=-10000.0;
-    double minV= 10000.0;
-    double maxV=-10000.0;
-
     for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
       for(int j=0; j<1; j++)
         for(int k=0; k<n.getNz(); k++){
@@ -385,18 +375,7 @@ protected:
           phi(i,j,k)  = npv[cont + 1*N_LES*N_LES];
           vort(i,j,k) = npv[cont + 2*N_LES*N_LES];
           cont = cont+1;
-          minN = std::min(minN,n(i,j,k));
-          maxN = std::max(maxN,n(i,j,k));
-          minP = std::min(minP,phi(i,j,k));
-          maxP = std::max(maxP,phi(i,j,k));
-          minV = std::min(minV,vort(i,j,k));
-          maxV = std::max(maxV,vort(i,j,k));
         }
-
-    printf("%f %f \n", minN, maxN);
-    printf("%f %f \n", minP, maxP);
-    printf("%f %f \n", minV, maxV);
-
 
     // // close Python console
     // closePythonModule(&pModule, &pInitFlow, &pFindLESTerms);
@@ -406,27 +385,27 @@ protected:
     mesh->communicate(n, phi, vort);
 
 
-    // Use default flags 
-    
+    // Use default flags
+
     // Choose method to use for Poisson bracket advection terms
-    switch(options["bracket"].withDefault(0)) {
+    switch (options["bracket"].withDefault(0)) {
     case 0: {
-      bm = BRACKET_STD; 
+      bm = BRACKET_STD;
       output << "\tBrackets: default differencing\n";
       break;
     }
     case 1: {
-      bm = BRACKET_SIMPLE; 
+      bm = BRACKET_SIMPLE;
       output << "\tBrackets: simplified operator\n";
       break;
     }
     case 2: {
-      bm = BRACKET_ARAKAWA; 
+      bm = BRACKET_ARAKAWA;
       output << "\tBrackets: Arakawa scheme\n";
       break;
     }
     case 3: {
-      bm = BRACKET_CTU; 
+      bm = BRACKET_CTU;
       output << "\tBrackets: Corner Transport Upwind method\n";
       break;
     }
@@ -434,88 +413,109 @@ protected:
       output << "ERROR: Invalid choice of bracket method. Must be 0 - 3\n";
       return 1;
     }
-    
+
     return 0;
   }
 
 
 
-  int convective(BoutReal UNUSED(time)) {
+
+  int convective(BoutReal time) {
     // Non-stiff, convective part of the problem
-    
+
     // Solve for potential
     if (pStep>1){
       phi = phiSolver->solve(vort, phi);
     }
     pStep++;
-        
+
+    double *rLES;
+
     // Communicate variables
     mesh->communicate(n, vort, phi);
+
+    if (pStep==1){
+      psimtime = time;
+    }
+
+
+
+    if (pStep>=pStepStart)
+    {
+      if (psimtime<time){
+        double simtime = time;
+        output_progress.print("\r");
+        rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pModule, pFindLESTerms);
+        int N_LES = n.getNz();
+        int LES_it = int(rLES[0]);
+        int cont=1;
+
+        if (LES_it==-1){
+          for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+            for(int j=0; j<1; j++)
+              for(int k=0; k<n.getNz(); k++){
+                pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+                pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+                n(i,j,k)        = rLES[cont + 2*N_LES*N_LES];
+                phi(i,j,k)      = rLES[cont + 3*N_LES*N_LES];
+                vort(i,j,k)     = rLES[cont + 4*N_LES*N_LES];
+                cont = cont+1;
+              }
+
+          mesh->communicate(n, vort, phi);
+
+        } else {
+
+          for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+            for(int j=0; j<1; j++)
+              for(int k=0; k<n.getNz(); k++){
+                pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+                pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+                cont = cont+1;
+              }
+
+        }
+
+       psimtime = time;
+      }
+
+    } else {
+
+      pPhiVort = bracket(phi, vort, bm);
+      pPhiN    = bracket(phi, n, bm);
+
+    }
     
+
+
     // Modified H-W equations, with zonal component subtracted from resistive coupling term
     Field3D nonzonal_n = n;
     Field3D nonzonal_phi = phi;
-    if(modified) {
+    if (modified) {
       // Subtract average in Y and Z
       nonzonal_n -= averageY(DC(n));
       nonzonal_phi -= averageY(DC(phi));
     }
-    
-    pPhiVort = bracket(phi, vort, bm);
-    pPhiN    = bracket(phi, n,    bm);
 
     ddt(vort) = -pPhiVort + alpha*(nonzonal_phi - nonzonal_n);
     ddt(n)    = -pPhiN    + alpha*(nonzonal_phi - nonzonal_n) - kappa*DDZ(phi);
-  
+
     return 0;
   }
   
 
 
 
-  int diffusive(BoutReal time) {
+  int diffusive(BoutReal UNUSED(time)) {
     // Diffusive terms
     mesh->communicate(n, vort);
 
-    double *mLES;
-    double *rLES;
-
-    double minpDvort =  10000.0;
-    double maxpDvort = -10000.0;
-    double minpDn    =  10000.0;
-    double maxpDn    = -10000.0;
-
-    if (pStep%1==0 && pStep>=pStepStart)
-    {
-      double simtime = time;
-      rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
-      int N_LES = n.getNz();
-      int cont=0;
-      for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-        for(int j=0; j<1; j++)
-          for(int k=0; k<n.getNz(); k++){
-            pDvort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-            pDn(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
-            cont = cont+1;
-            // minpDvort = std::min(minpDvort,pDvort(i,j,k));
-            // maxpDvort = std::max(maxpDvort,pDvort(i,j,k));
-            // minpDn    = std::min(minpDn,pDn(i,j,k));
-            // maxpDn    = std::max(maxpDn,pDn(i,j,k));
-          }
-
-      // printf("%d %f %f \n", pStep, minpDvort, maxpDvort);
-      // printf("%d %f %f \n", pStep, minpDn,    maxpDn);
-
-      mesh->communicate(pDvort, pDn);
-    }
-
-    ddt(vort) = -Dvort*Delp4(vort) - pDvort;
-    ddt(n)    = -Dn*Delp4(n)       - pDn;
+    ddt(vort) = - Dvort*Delp4(vort);
+    ddt(n)    = - Dn*Delp4(n);
 
     return 0;
   }
 };
-
 
 
 // Define a main() function
