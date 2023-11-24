@@ -405,6 +405,274 @@ double* writePoissonDNS(int pStep, int pStepStart, double dx, double simtime, Fi
 
 
 
+
+
+void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFindLESTerms) {
+
+
+  // Initialize Python interpreter
+  Py_Initialize();
+  _import_array();
+
+
+  // set Python system path
+  PyObject *sys_path = PySys_GetObject("path");
+  PyList_Append(sys_path, PyUnicode_FromString("/lustre/scafellpike/local/HT04543/jxc06/jxc74-jxc06/projects/Turbulence_with_Style/PhaseIII_FARSCAPE3/codes/StylES/bout_interfaces/"));
+
+  // Import Python module
+  *pModule = PyImport_ImportModule("pBOUT");
+  if(*pModule == NULL) {
+    PyErr_Print();
+    fprintf(stderr, "Import Python module failed!\n");
+  }
+
+
+  // Load Python functions and execute it
+  *pInitFlow = PyObject_GetAttrString(*pModule, "initFlow");
+
+  if (!(*pInitFlow) || !PyCallable_Check(*pInitFlow)) {
+    Py_DECREF(pModule);
+    PyErr_Print();
+    fprintf(stderr, "Python init function not found!\n");
+  }
+
+
+  // Load Python functions and execute it
+  *pFindLESTerms = PyObject_GetAttrString(*pModule, "findLESTerms");
+
+  if (!(*pFindLESTerms) || !PyCallable_Check(*pFindLESTerms)) {
+    Py_DECREF(pModule);
+    PyErr_Print();
+    fprintf(stderr, "Python function not found!\n");
+  }
+
+  return;
+
+}
+
+
+
+
+
+void closePythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFindLESTerms) {
+
+  // shutdown Python interpreter
+  Py_DECREF(pInitFlow);
+  Py_DECREF(pFindLESTerms);
+  Py_DECREF(pModule);
+
+  if (Py_FinalizeEx() < 0) {
+    PyErr_Print();
+    fprintf(stderr, "Failed to shutdown Python!");
+  }
+
+  return;
+
+}
+
+
+
+double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyObject *pModule, PyObject *pInitFlow) {
+
+  // local variables
+  PyObject *pValue = NULL;
+  PyObject *pArray = NULL;  
+  PyArrayObject *pArgs = NULL;
+  PyArrayObject *pReturn = NULL;  
+
+  const int SIZE  = n.getNz();
+  const int SIZE2 = 3*SIZE*SIZE;
+  const int ND    = 1;
+
+  int i;
+  int j;
+  int k;
+  int cont;
+
+  double* fLES;
+  double* pLES = new double[2+SIZE2];
+
+  if (!pLES) {
+      fprintf(stderr, "Out of memory when allocating array pLES!\n");
+  }
+
+  npy_intp dims[1]{SIZE2};
+
+
+
+
+  // pass n and vort arrays to pLES
+  pLES[0] = dx;
+  pLES[1] = dy;
+
+  cont=2;
+  for(i=2; i<SIZE+2; i++)   // we assume 2 guards cells in x-direction
+    for(j=0; j<1; j++)
+      for(k=0; k<SIZE; k++){
+        pLES[cont++] = n(i,j,k);
+        pLES[cont++] = phi(i,j,k);
+        pLES[cont++] = vort(i,j,k);
+      }
+
+
+
+  // convert to numpy array   
+  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
+  if (pArray)
+  {
+
+    // create arguments
+    pArgs = reinterpret_cast<PyArrayObject*>(pArray);
+    if (pArgs!=NULL) {
+
+      // call function
+      pValue = PyObject_CallFunctionObjArgs(pInitFlow, pArray, NULL);
+
+      if (pValue!=NULL) {
+
+        pReturn = reinterpret_cast<PyArrayObject*>(pValue);
+        printf("Dimensions of returned n array are: %d\n", PyArray_NDIM(pReturn));
+
+        // convert result back to C++
+        fLES = reinterpret_cast<double*>(PyArray_DATA(pReturn));
+
+        // decrement Python object counter
+        // Py_DECREF(pReturn);
+        // Py_DECREF(pValue);
+        // Py_DECREF(pArgs);
+        // Py_DECREF(pArray);
+
+      } else {
+        Py_DECREF(pValue);
+        Py_DECREF(pArgs);
+        Py_DECREF(pInitFlow);
+        Py_DECREF(pModule);
+        PyErr_Print();
+        fprintf(stderr, "Call to Python function failed!\n");
+      }
+    
+    } else {
+      PyErr_Print();
+      fprintf(stderr, "Arguments not created!\n");
+    }
+
+  } else {
+    PyErr_Print();
+    fprintf(stderr, "Array not created!\n");
+  }
+
+
+  delete [] pLES;
+
+  return fLES;
+
+}
+
+
+
+
+
+double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field3D n, Field3D phi, Field3D vort,
+  PyObject *pModule, PyObject *pFindLESTerms) {
+
+  // local variables
+  PyObject *pValue = NULL;
+  PyObject *pArray = NULL;  
+  PyArrayObject *pArgs = NULL;
+  PyArrayObject *pReturn = NULL;  
+
+  const int SIZE  = n.getNz();
+  const int SIZE2 = 4+3*SIZE*SIZE;
+  const int ND    = 1;
+
+  int i;
+  int j;
+  int k;
+  int cont;
+
+  double* fLES;
+  double* pLES = new double[SIZE2];
+
+  if (!pLES) {
+      fprintf(stderr, "Out of memory when allocating array pLES!\n");
+  }
+
+  npy_intp dims[1]{SIZE2};
+
+
+
+  // pass n and vort arrays to pLES
+  pLES[0] = double(pStep);
+  pLES[1] = double(pStepStart);
+  pLES[2] = dx;
+  pLES[3] = simtime;
+
+  cont=4;
+  int N_LES = n.getNz();
+  for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+    for(int j=0; j<1; j++)
+      for(int k=0; k<n.getNz(); k++){
+        pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
+        pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
+        pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
+        cont = cont+1;
+      }
+
+
+  // convert to numpy array   
+  pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
+  if (pArray)
+  {
+
+    // create arguments
+    pArgs = reinterpret_cast<PyArrayObject*>(pArray);
+    if (pArgs!=NULL) {
+
+      // call function
+      pValue = PyObject_CallFunctionObjArgs(pFindLESTerms, pArray, NULL);
+
+      if (pValue!=NULL) {
+
+        pReturn = reinterpret_cast<PyArrayObject*>(pValue);
+        //printf("Dimensions of returned n array are: %d\n", PyArray_NDIM(pReturn));
+
+        // convert result back to C++
+        fLES = reinterpret_cast<double*>(PyArray_DATA(pReturn));
+
+        // decrement Python object counter
+        // Py_DECREF(pReturn);
+        // Py_DECREF(pValue);
+        // Py_DECREF(pArgs);
+        // Py_DECREF(pArray);
+
+      } else {
+        Py_DECREF(pValue);
+        Py_DECREF(pArgs);
+        Py_DECREF(pFindLESTerms);
+        Py_DECREF(pModule);
+        PyErr_Print();
+        fprintf(stderr, "Call to Python function failed!\n");
+      }
+    
+    } else {
+      PyErr_Print();
+      fprintf(stderr, "Arguments not created!\n");
+    }
+
+  } else {
+    PyErr_Print();
+    fprintf(stderr, "Array not created!\n");
+  }
+
+
+  delete [] pLES;
+
+  return fLES;
+
+}
+
+
+
 class HW : public PhysicsModel {
 private:
   Field3D n, vort; // Evolving density and vorticity

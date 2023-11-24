@@ -349,7 +349,8 @@ set(BOUT_SOURCES
   )
 
 
-find_package(Python3)
+find_package(Python 3.8 REQUIRED COMPONENTS NumPy)
+#find_package(PythonLibs 3.8 REQUIRED)
 find_package(ClangFormat)
 
 if (Python3_FOUND AND ClangFormat_FOUND)
