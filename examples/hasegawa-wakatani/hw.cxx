@@ -417,7 +417,7 @@ private:
   PyObject *pWritePoissonDNS;
 
   int pStep      = 0;
-  int pStepStart = 200;  // the first call to StylES occurs when step will be 1!
+  int pStepStart = 1;  // the first call to StylES occurs when step will be 1!
 
   double deltax;
   double deltaz;
@@ -572,54 +572,25 @@ protected:
       psimtime = time;
     }
 
-    // pPhiVort = bracket(phi, vort, bm);
-    // pPhiN    = bracket(phi, n, bm);
-    // double simtime2 = time;
-    // rLES = writePoissonDNS(pStep, pStepStart, deltax, simtime2, n, phi, vort, pPhiVort, pPhiN, pModule, pWritePoissonDNS);
-
     if (pStep>=pStepStart)
     {
-      if (psimtime<time){
+      pPhiVort = bracket(phi, vort, bm);
+      pPhiN    = bracket(phi, n, bm);
 
-        pPhiVort = bracket(phi, vort, bm);
-        pPhiN    = bracket(phi, n, bm);
+      double simtime = time;
+      output_progress.print("\r");
+      rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
+      int N_LES = n.getNz();
+      int LES_it = int(rLES[0]);
+      int cont=1;
 
-        double simtime = time;
-        output_progress.print("\r");
-        rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
-        int N_LES = n.getNz();
-        int LES_it = int(rLES[0]);
-        int cont=1;
-
-        if (LES_it==-1){
-          for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-            for(int j=0; j<1; j++)
-              for(int k=0; k<n.getNz(); k++){
-                pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-                pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
-                n(i,j,k)        = rLES[cont + 2*N_LES*N_LES];
-                phi(i,j,k)      = rLES[cont + 3*N_LES*N_LES];
-                vort(i,j,k)     = rLES[cont + 4*N_LES*N_LES];
-                cont = cont+1;
-              }
-
-          mesh->communicate(n, vort, phi);
-
-        } else {
-
-          for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-            for(int j=0; j<1; j++)
-              for(int k=0; k<n.getNz(); k++){
-                pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-                pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
-                cont = cont+1;
-              }
-
-        }
-
-        psimtime = time;
-
-      }
+      for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+        for(int j=0; j<1; j++)
+          for(int k=0; k<n.getNz(); k++){
+            pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+            pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+            cont = cont+1;
+          }
 
     } else {
 
@@ -640,7 +611,8 @@ protected:
       }
 
     }
-    
+
+
 
 
     // Modified H-W equations, with zonal component subtracted from resistive coupling term
