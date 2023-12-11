@@ -10,9 +10,9 @@ MYG = 0  # No need for Y communications
 periodicX = true  # Domain is periodic in X
 
 [mesh]
-nx = 260 # Note 4 guard cells in X
+nx = 36 # Note 4 guard cells in X
 ny = 1
-nz = 256 # Periodic, so no guard cells in Z
+nz = 32 # Periodic, so no guard cells in Z
 
 L  = 50.176
 dx = L/(nx-4)
