@@ -499,6 +499,8 @@ private:
   Field3D pPhiVort;
   Field3D pPhiN;
 
+  Field3D tPhiVort;
+  Field3D tPhiN;
   
 
   int totCount = 0;
@@ -553,6 +555,8 @@ protected:
     pPhiVort = 0.;
     pPhiN = 0.;
 
+    tPhiVort = 0.;
+    tPhiN = 0.;
 
 
 
@@ -658,8 +662,8 @@ protected:
       for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
         for(int j=0; j<1; j++)
           for(int k=0; k<n.getNz(); k++){
-            pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-            pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+            tPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+            tPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
             cont = cont+1;
           }
 
@@ -728,8 +732,8 @@ protected:
     // Diffusive terms
     mesh->communicate(n, vort);
 
-    ddt(vort) = - Dvort*Delp4(vort);
-    ddt(n)    = - Dn*Delp4(n);
+    ddt(vort) = - Dvort*Delp4(vort) + tPhiVort;
+    ddt(n)    = - Dn*Delp4(n)       + tPhiN;
 
 
     if (pStep>pStepStart)
