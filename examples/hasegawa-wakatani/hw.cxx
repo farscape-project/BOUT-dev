@@ -25,7 +25,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/home/jcastagna/projects/Turbulence_with_Style/PhaseII_FARSCAPE2/codes/StylES/bout_interfaces/"));
+  PyList_Append(sys_path, PyUnicode_FromString("../../../../StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
@@ -417,7 +417,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("/lustre/scafellpike/local/HT04543/jxc06/jxc74-jxc06/projects/Turbulence_with_Style/PhaseIII_FARSCAPE3/codes/StylES/bout_interfaces/"));
+  PyList_Append(sys_path, PyUnicode_FromString("../../../../StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
