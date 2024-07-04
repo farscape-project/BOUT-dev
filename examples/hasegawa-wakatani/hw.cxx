@@ -192,8 +192,8 @@ double* initFlow(double dx, double dy, Field3D n, Field3D phi, Field3D vort, PyO
 
 
 
-double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field3D n, Field3D phi, Field3D vort, Field3D pPhiVort, Field3D pPhiN,
-  PyObject *pModule, PyObject *pFindLESTerms) {
+double* findLESTerms(const int pStep, const int pStepStart, const double dx, const double simtime, const Field3D& n, Field3D& phi, Field3D& vort, Field3D& pPhiVort, Field3D& pPhiN,
+  const bool implicitStylES, PyObject *pModule, PyObject *pFindLESTerms) {
 
   // local variables
   PyObject *pValue = NULL;
@@ -228,18 +228,30 @@ double* findLESTerms(int pStep, int pStepStart, double dx, double simtime, Field
   pLES[3] = simtime;
 
   cont=4;
-  int N_LES = n.getNz();
-  for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-    for(int j=0; j<1; j++)
-      for(int k=0; k<n.getNz(); k++){
-        pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
-        pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
-        pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
-        pLES[cont + 3*N_LES*N_LES] = pPhiVort(i,j,k);
-        pLES[cont + 4*N_LES*N_LES] = pPhiN(i,j,k);                
-        cont = cont+1;
-      }
-
+  if (implicitStylES){
+    int N_LES = n.getNz();
+    for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+      for(int j=0; j<1; j++)
+        for(int k=0; k<n.getNz(); k++){
+          pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
+          pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
+          pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
+          pLES[cont + 3*N_LES*N_LES] = pPhiVort(i,j,k);
+          pLES[cont + 4*N_LES*N_LES] = pPhiN(i,j,k);                
+          cont = cont+1;
+        }
+  }
+  else{
+    int N_LES = n.getNz();
+    for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+      for(int j=0; j<1; j++)
+        for(int k=0; k<n.getNz(); k++){
+          pLES[cont + 0*N_LES*N_LES] = n(i,j,k);
+          pLES[cont + 1*N_LES*N_LES] = phi(i,j,k);
+          pLES[cont + 2*N_LES*N_LES] = vort(i,j,k);
+          cont = cont+1;
+        }
+  }
 
   // convert to numpy array   
   pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
@@ -488,13 +500,14 @@ private:
   PyObject *pWritePoissonDNS;
 
   int pStep      = 0;
-  int pStepStart = 1;  // the first call to StylES occurs when step will be 1!
+  int pStepStart = 0;  // for pStep<pStepStart you have a DNS.
 
   double deltax;
   double deltaz;
-  double tollLES = 1.0e-3;
-  double residualsLES = 1.0e10;
   double psimtime = 0.0;
+
+  bool profile_StylES = false;
+  bool implicitStylES = false;
 
   Field3D pPhiVort;
   Field3D pPhiN;
@@ -633,66 +646,58 @@ protected:
     // Non-stiff, convective part of the problem
 
     // Solve for potential
-    if (pStep>1){
-      phi = phiSolver->solve(vort, phi);
-    }
-    pStep++;
+    phi = phiSolver->solve(vort, phi);
 
     double *rLES;
 
     // Communicate variables
     mesh->communicate(n, vort, phi);
 
-    if (pStep==1){
+    if (pStep==0){
       psimtime = time;
     }
 
+    // find brackets term (for explicit) or subgrid scale terms (for implicit) via StylES
     if (pStep>=pStepStart)
     {
-      pPhiVort = bracket(phi, vort, bm);
-      pPhiN    = bracket(phi, n, bm);
-
+      if (implicitStylES){
+        pPhiVort = bracket(phi, vort, bm);
+        pPhiN    = bracket(phi, n, bm);
+      }
       double simtime = time;
       output_progress.print("\r");
-      rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, pModule, pFindLESTerms);
+      rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, implicitStylES, pModule, pFindLESTerms);
       int N_LES = n.getNz();
       int LES_it = int(rLES[0]);
       int cont=1;
 
-      for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-        for(int j=0; j<1; j++)
-          for(int k=0; k<n.getNz(); k++){
-            tPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
-            tPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
-            cont = cont+1;
-          }
-
-    } else {
-
-      if (pStep>pStepStart)
-      {
-        timeStart = high_resolution_clock::now();
+      if (implicitStylES){
+        for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+          for(int j=0; j<1; j++)
+            for(int k=0; k<n.getNz(); k++){
+              tPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+              tPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+              cont = cont+1;
+            }
       }
-
+      else{
+        for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+          for(int j=0; j<1; j++)
+            for(int k=0; k<n.getNz(); k++){
+              pPhiVort(i,j,k) = rLES[cont + 0*N_LES*N_LES];
+              pPhiN(i,j,k)    = rLES[cont + 1*N_LES*N_LES];
+              cont = cont+1;
+            }
+      }
+    }
+    else{
       pPhiVort = bracket(phi, vort, bm);
       pPhiN    = bracket(phi, n, bm);
-
-      if (pStep>pStepStart)
-      {
-        timeStop = high_resolution_clock::now();
-        auto duration1 = duration_cast<microseconds>(timeStop - timeStart);
-        totDuration1 = totDuration1 + duration1;
-        // printf("timing convective bracket %lld\n", totDuration1.count());
-      }
-
     }
 
 
-
-
     // Modified H-W equations, with zonal component subtracted from resistive coupling term
-    if (pStep>pStepStart)
-    {
+    if (profile_StylES){
       timeStart = high_resolution_clock::now();
     }
 
@@ -708,12 +713,12 @@ protected:
     ddt(vort) = -pPhiVort + alpha*(nonzonal_phi - nonzonal_n);
     ddt(n)    = -pPhiN    + alpha*(nonzonal_phi - nonzonal_n) - kappa*DDZ(phi);
 
-    if (pStep>pStepStart)
+    if (profile_StylES)
     {
       timeStop = high_resolution_clock::now();
       auto duration1 = duration_cast<microseconds>(timeStop - timeStart);
       totDuration1 = totDuration1 + duration1;
-      // printf("timing convective all %lld\n", totDuration2.count());
+      printf("timing convective all %lld\n", totDuration2.count());
     }
 
     return 0;
@@ -724,7 +729,7 @@ protected:
 
   int diffusive(BoutReal UNUSED(time)) {
 
-    if (pStep>pStepStart)
+    if (profile_StylES)
     {
       timeStart = high_resolution_clock::now();
     }
@@ -732,19 +737,26 @@ protected:
     // Diffusive terms
     mesh->communicate(n, vort);
 
-    ddt(vort) = - Dvort*Delp4(vort) + tPhiVort;
-    ddt(n)    = - Dn*Delp4(n)       + tPhiN;
+    if (implicitStylES){
+      ddt(vort) = - Dvort*Delp4(vort) + tPhiVort;
+      ddt(n)    = - Dn*Delp4(n)       + tPhiN;
+    }
+    else{
+      ddt(vort) = - Dvort*Delp4(vort);
+      ddt(n)    = - Dn*Delp4(n);
+    }
 
 
-    if (pStep>pStepStart)
+    if (profile_StylES)
     {
       timeStop = high_resolution_clock::now();
       auto duration2 = duration_cast<microseconds>(timeStop - timeStart);
       totDuration2 = totDuration2 + duration2;
       totCount=totCount+1;
-      // printf("timing diffusion %lld  %d\n", totDuration2.count(), totCount);
+      printf("timing diffusion %lld  %d\n", totDuration2.count(), totCount);
     }
 
+    pStep++;
     return 0;
   }
 
