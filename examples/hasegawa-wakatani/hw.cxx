@@ -507,7 +507,7 @@ private:
   double psimtime = 0.0;
 
   bool profile_StylES = false;
-  bool implicitStylES = false;
+  bool implicitStylES = true;
 
   Field3D pPhiVort;
   Field3D pPhiN;
@@ -646,7 +646,9 @@ protected:
     // Non-stiff, convective part of the problem
 
     // Solve for potential
-    phi = phiSolver->solve(vort, phi);
+    if (pStep>0){
+      phi = phiSolver->solve(vort, phi);
+    }
 
     double *rLES;
 
