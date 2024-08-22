@@ -218,11 +218,11 @@ double* findLESTerms(const int pStep, const int pStepStart, const double dx, con
   PyArrayObject *pArgs = NULL;
   PyArrayObject *pReturn = NULL;  
 
-  const int SIZEX  = n.getNx()-4;
-  const int SIZEY  = n.getNy()-4;
-  const int SIZEZ  = n.getNz();
-  const int SIZE   = SIZEX*SIZEY*SIZEZ;
-  const int SIZET = 4+5*SIZE;
+  const int SIZEX = n.getNx()-4;
+  const int SIZEY = n.getNy()-4;
+  const int SIZEZ = n.getNz();
+  const int SIZE  = SIZEX*SIZEY*SIZEZ;
+  const int SIZET = 4+3*SIZE;
   const int ND    = 1;
 
   int i;
@@ -247,29 +247,17 @@ double* findLESTerms(const int pStep, const int pStepStart, const double dx, con
   pLES[2] = dx;
   pLES[3] = simtime;
 
+
   cont=4;
-  if (implicitStylES){
-    for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-      for(int j=2; j<n.getNy()-2; j++)
-        for(int k=0; k<n.getNz(); k++){
-          pLES[cont + 0*SIZE] = n(i,j,k);
-          pLES[cont + 1*SIZE] = phi(i,j,k);
-          pLES[cont + 2*SIZE] = vort(i,j,k);
-          pLES[cont + 3*SIZE] = pPhiVort(i,j,k);
-          pLES[cont + 4*SIZE] = pPhiN(i,j,k);                
-          cont = cont+1;
-        }
-  }
-  else{
-    for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
-      for(int j=2; j<n.getNy()-2; j++)
-        for(int k=0; k<n.getNz(); k++){
-          pLES[cont + 0*SIZE] = n(i,j,k);
-          pLES[cont + 1*SIZE] = phi(i,j,k);
-          pLES[cont + 2*SIZE] = vort(i,j,k);
-          cont = cont+1;
-        }
-  }
+  for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
+    for(int j=2; j<n.getNy()-2; j++)
+      for(int k=0; k<n.getNz(); k++){
+        pLES[cont + 0*SIZE] = n(i,j,k);
+        pLES[cont + 1*SIZE] = phi(i,j,k);
+        pLES[cont + 2*SIZE] = vort(i,j,k);
+        cont = cont+1;
+      }
+
 
   // convert to numpy array   
   pArray = PyArray_SimpleNewFromData(ND, dims, NPY_DOUBLE, reinterpret_cast<void*>(pLES));
@@ -518,14 +506,14 @@ private:
   PyObject *pWritePoissonDNS;
 
   int pStep      = 0;
-  int pStepStart = 1000000;  // for pStep<pStepStart you have a DNS.
+  int pStepStart = 0;  // for pStep<pStepStart you have a DNS.
 
   double deltax;
   double deltaz;
   double psimtime = 0.0;
 
   bool profile_StylES = false;
-  bool implicitStylES = true;
+  bool implicitStylES = false;
 
   Field3D pPhiVort;
   Field3D pPhiN;
@@ -610,7 +598,7 @@ public:
 
 
 
-  int rhs(BoutReal UNUSED(time)) override {
+  int rhs(BoutReal time) override {
 
     double *rLES;
 
@@ -637,7 +625,7 @@ public:
     // find brackets term (for explicit) or subgrid scale terms (for implicit) via StylES
     if (pStep>=pStepStart)
     {
-      double simtime = 0.0;
+      double simtime = time;
       output_progress.print("\r");
       rLES = findLESTerms(pStep, pStepStart, deltax, simtime, n, phi, vort, pPhiVort, pPhiN, implicitStylES, pModule, pFindLESTerms);
       int LES_it = int(rLES[0]);
@@ -668,6 +656,7 @@ public:
       ddt(vort_acc)[i] =  -pPhiVort[i] - div_current + Dvort * Delp2(vort_acc, i);
     }
 
+    pStep++;
     return 0;
   }
 };
