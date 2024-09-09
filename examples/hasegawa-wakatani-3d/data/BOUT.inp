@@ -2,19 +2,23 @@
 # Hasegawa-Wakatani test case
 #
 
-timestep = 1.   # Output timestep
-nout = 100      # Number of output steps
+timestep = 0.000001   # Output timestep
+nout = 1      # Number of output steps
 #nout = 1    # Number of output steps
 
 [mesh]
+Lx = 51.2
+Ly = 16.0
+Lz = 51.2
 
-nx = 68  # Note 4 guard cells in X
-ny = 16 
-nz = 64  # Periodic, so no guard cells in Z
+nx = 36  # Note 4 guard cells in X
+ny = 16
+nz = 32  # Periodic, so no guard cells in Z
 
-dx = 0.2
-dy = 1.
-dz = 0.2
+dx = Lx/(nx-4)
+dy = Ly/ny
+dz = Lz/nz
+
 
 # Set periodic boundary condition in y
 ixseps1 = nx

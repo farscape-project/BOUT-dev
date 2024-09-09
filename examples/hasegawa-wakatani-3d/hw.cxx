@@ -512,7 +512,7 @@ private:
   double deltaz;
   double psimtime = 0.0;
 
-  bool profile_StylES = false;
+  bool profile_StylES = true;
   bool implicitStylES = false;
 
   Field3D pPhiVort;
@@ -602,14 +602,35 @@ public:
 
     double *rLES;
 
+
+    if (profile_StylES){
+      timeStart = high_resolution_clock::now();
+    }
+
     // Solve for potential
     if (pStep>0){
       phi = phiSolver->solve(vort, phi);
     }
 
+    if (profile_StylES)
+    {
+      timeStop = high_resolution_clock::now();
+      auto timeDiff = duration_cast<microseconds>(timeStop - timeStart);
+      printf("BOUT++ timing solve potential %f\n", timeDiff.count()/1.0e6);
+      timeStart = high_resolution_clock::now();
+    }
+
     Field3D phi_minus_n = phi - n;
     // Communicate variables
     mesh->communicate(n, vort, phi, phi_minus_n);
+
+    if (profile_StylES)
+    {
+      timeStop = high_resolution_clock::now();
+      auto timeDiff = duration_cast<microseconds>(timeStop - timeStart);
+      printf("BOUT++ timing communicate     %f\n", timeDiff.count()/1.0e6);
+      timeStart = high_resolution_clock::now();
+    }
 
     // Create accessors which enable fast access
     auto n_acc = FieldAccessor<>(n);
@@ -631,6 +652,14 @@ public:
       int LES_it = int(rLES[0]);
       int cont=1;
 
+      if (profile_StylES)
+      {
+        timeStop = high_resolution_clock::now();
+        auto timeDiff = duration_cast<microseconds>(timeStop - timeStart);
+        printf("BOUT++ timing findLESTerms    %f\n", timeDiff.count()/1.0e6);
+        timeStart = high_resolution_clock::now();
+      }
+
       for(int i=2; i<n.getNx()-2; i++)   // we assume 2 guards cells in x-direction
         for(int j=2; j<n.getNy()-2; j++)
           for(int k=0; k<n.getNz(); k++){
@@ -638,6 +667,15 @@ public:
             pPhiN(i,j,k)    = rLES[cont + 1*SIZE];
             cont = cont+1;
           }
+
+      if (profile_StylES)
+      {
+        timeStop = high_resolution_clock::now();
+        auto timeDiff = duration_cast<microseconds>(timeStop - timeStart);
+        printf("BOUT++ timing passing to CPU  %f\n", timeDiff.count()/1.0e6);
+        timeStart = high_resolution_clock::now();
+      }
+
     }
     else{
       BOUT_FOR_RAJA(i, n.getRegion("RGN_NOBNDRY"), CAPTURE(alpha, kappa, Dn, Dvort)) {
@@ -654,6 +692,14 @@ public:
       ddt(n_acc)[i] = -pPhiN[i] - div_current - kappa * DDZ(phi_acc, i) + Dn * Delp2(n_acc, i);
 
       ddt(vort_acc)[i] =  -pPhiVort[i] - div_current + Dvort * Delp2(vort_acc, i);
+    }
+
+    if (profile_StylES)
+    {
+      timeStop = high_resolution_clock::now();
+      auto timeDiff = duration_cast<microseconds>(timeStop - timeStart);
+      printf("BOUT++ timing integrate       %f\n\n", timeDiff.count()/1.0e6);
+      timeStart = high_resolution_clock::now();
     }
 
     pStep++;
