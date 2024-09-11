@@ -512,7 +512,7 @@ private:
   double deltaz;
   double psimtime = 0.0;
 
-  bool profile_StylES = true;
+  bool profile_StylES = false;
   bool implicitStylES = false;
 
   Field3D pPhiVort;
