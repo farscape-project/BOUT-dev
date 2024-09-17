@@ -14,7 +14,7 @@ Ly = 8.0
 Lz = 51.2
 
 nx = 132  # Note 4 guard cells in X
-ny = 16
+ny = 8 
 nz = 128  # Periodic, so no guard cells in Z
 
 dx = Lx/(nx-4)
