@@ -5,7 +5,7 @@
 timestep = 0.001   # Output timestep
 nout = 200        # Number of output steps
 
-periodicX = True
+periodicX = true
 
 
 [mesh]
