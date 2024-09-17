@@ -2,18 +2,20 @@
 # Hasegawa-Wakatani test case
 #
 
-timestep = 0.000001   # Output timestep
-nout = 1      # Number of output steps
-#nout = 1    # Number of output steps
+timestep = 0.001   # Output timestep
+nout = 200        # Number of output steps
+
+periodicX = True
+
 
 [mesh]
 Lx = 51.2
-Ly = 16.0
+Ly = 8.0
 Lz = 51.2
 
-nx = 36  # Note 4 guard cells in X
+nx = 132  # Note 4 guard cells in X
 ny = 16
-nz = 32  # Periodic, so no guard cells in Z
+nz = 128  # Periodic, so no guard cells in Z
 
 dx = Lx/(nx-4)
 dy = Ly/ny
@@ -37,9 +39,9 @@ ixseps2 = nx
 [hw]
 
 alpha = 1.0    # Adiabaticity (~ conductivity)
-kappa = 0.5    # Density gradient drive
-Dvort = 1e-3   # Vorticity diffusion
-Dn    = 1e-3   # Density diffusion
+kappa = 1.0    # Density gradient drive
+Dvort = 1e-6   # Vorticity diffusion
+Dn    = 1e-6   # Density diffusion
 
 [all]
 scale = 0.
