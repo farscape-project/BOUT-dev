@@ -25,7 +25,7 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("../../../../StylES_2D_new/bout_interfaces/"));
+  PyList_Append(sys_path, PyUnicode_FromString("../../../../StylES/bout_interfaces/"));
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
