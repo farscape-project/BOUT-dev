@@ -2,7 +2,7 @@
 # Hasegawa-Wakatani test case
 #
 
-timestep = 1.0   # Output timestep
+timestep = 1   # Output timestep
 nout = 100      # Number of output steps
 
 MYG = 0  # No need for Y communications
@@ -10,20 +10,25 @@ MYG = 0  # No need for Y communications
 periodicX = true  # Domain is periodic in X
 
 [mesh]
-nx = 36 # Note 4 guard cells in X
-ny = 1
-nz = 32 # Periodic, so no guard cells in Z
+Lx = 50.176
+Ly = 1.0
+Lz = 50.176
 
-L  = 50.176
-dx = L/(nx-4)
-dy = 1.0
-dz = L/nz
+nx = 36  # Note 4 guard cells in X
+ny = 1 
+nz = 32  # Periodic, so no guard cells in Z
+
+dx = Lx/(nx-4)
+dy = Ly/ny 
+dz = Lz/nz
+
 
 [solver]
 mxstep = 1e5
+atol = 1e-6
 
 [output]
-enabled = true
+enabled = true 
 
 [hw]
 alpha = 1.0    # Adiabaticity (~ conductivity)
