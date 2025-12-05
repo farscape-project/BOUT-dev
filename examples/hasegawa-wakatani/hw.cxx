@@ -10,10 +10,8 @@
 #include <bout/physicsmodel.hxx>
 #include <bout/smoothing.hxx>
 
-
 #include <chrono>
 using namespace std::chrono;
-
 
 void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFindLESTerms) {
 
@@ -25,7 +23,19 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
 
   // set Python system path
   PyObject *sys_path = PySys_GetObject("path");
-  PyList_Append(sys_path, PyUnicode_FromString("../../../../StylES/bout_interfaces/"));
+
+  PyObject *repr = PyObject_Repr(sys_path);  // sys_path -> string object
+  //const char *str = PyUnicode_AsUTF8(repr);  // get UTF-8 C string
+  //printf("current sys_path %s\n", str);
+  Py_XDECREF(repr);
+
+  PyList_Append(sys_path,
+    PyUnicode_FromString("/lus/lfs1aip2/home/u5ai/jcastagna.u5ai/Turbulence_with_Style/PhaseV_FCL1/codes/StylES-PyTorch/bout_interfaces/"));
+
+  repr = PyObject_Repr(sys_path);
+  //str = PyUnicode_AsUTF8(repr);
+  //printf("modified sys_path %s\n", str);
+  Py_XDECREF(repr);
 
   // Import Python module
   *pModule = PyImport_ImportModule("pBOUT");
@@ -54,10 +64,13 @@ void initPythonModule(PyObject **pModule, PyObject **pInitFlow, PyObject **pFind
     fprintf(stderr, "Python function not found!\n");
   }
 
-
   return;
 
 }
+
+
+
+
 
 
 
