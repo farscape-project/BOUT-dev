@@ -11,7 +11,6 @@ templates themselves.
 
 """
 
-
 from __future__ import print_function
 
 from builtins import object
@@ -194,7 +193,6 @@ class Field(object):
             return "{self.name}".format(self=self)
         else:
             return "{self.name}_acc[{self.mixed_base_ind_var}]".format(self=self)
-
 
     def __eq__(self, other):
         try:
