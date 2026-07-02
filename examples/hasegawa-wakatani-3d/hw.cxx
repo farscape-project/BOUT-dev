@@ -15,6 +15,7 @@
 
 #define DISABLE_RAJA 0
 #include <bout/rajalib.hxx>
+#include <bout/nvtx.hxx>
 
 class HW3D : public PhysicsModel {
 private:
@@ -62,6 +63,7 @@ public:
 
     // Note: Capture class members, otherwise if accessed via `this` pointer
     //       an illegal memory access error may occur on a GPU
+    bout::profiling::nvtxPushColor("HW3D::rhs", bout::profiling::nvtxColor::Cyan);
     BOUT_FOR_RAJA(i, n.getRegion("RGN_NOBNDRY"), CAPTURE(alpha, kappa, Dn, Dvort)) {
 
       BoutReal div_current = alpha * Div_par_Grad_par(phi_minus_n_acc, i);
@@ -73,6 +75,7 @@ public:
           -bracket(phi_acc, vort_acc, i) - div_current + Dvort * Delp2(vort_acc, i);
     };
 
+    bout::profiling::nvtxPop();
     return 0;
   }
 };

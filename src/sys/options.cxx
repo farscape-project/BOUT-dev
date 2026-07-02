@@ -28,6 +28,7 @@
 #include <set>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -777,8 +778,51 @@ struct ConvertContainer<C<Scalar>> {
   template <class OtherScalar>
   Container operator()(const C<OtherScalar>& value) {
     Container result(similar_to);
-    result.reshape(value.shape()); // Resize to shape of input
+    if constexpr (std::is_same_v<C<OtherScalar>, Array<OtherScalar>>) {
+      result.reallocate(value.size());
+    } else {
+      result.reshape(value.shape());
+    }
 
+    std::transform(std::begin(value), std::end(value), std::begin(result),
+                   [](const OtherScalar& x) { return static_cast<Scalar>(x); });
+    return result;
+  }
+
+  template <class Other>
+  Container operator()([[maybe_unused]] const Other& value) {
+    throw BoutException(error_message);
+  }
+
+private:
+  std::string error_message;
+  Container similar_to;
+};
+template <class Scalar>
+struct ConvertContainer<Array<Scalar>> {
+  using Container = Array<Scalar>;
+
+  ConvertContainer(std::string error_message, const Container& similar_to)
+      : error_message(std::move(error_message)), similar_to(similar_to) {}
+
+  Container operator()(int value) {
+    Container result(similar_to);
+    std::fill(std::begin(result), std::end(result), static_cast<Scalar>(value));
+    return result;
+  }
+
+  Container operator()(BoutReal value) {
+    Container result(similar_to);
+    std::fill(std::begin(result), std::end(result), static_cast<Scalar>(value));
+    return result;
+  }
+
+  Container operator()(const Container& value) { return value; }
+
+  template <class OtherScalar>
+  Container operator()(const Array<OtherScalar>& value) {
+    Container result(similar_to);
+    result.reallocate(value.size());
     std::transform(std::begin(value), std::end(value), std::begin(result),
                    [](const OtherScalar& x) { return static_cast<Scalar>(x); });
     return result;
